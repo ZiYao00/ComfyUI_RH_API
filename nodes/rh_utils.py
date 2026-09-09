@@ -362,6 +362,13 @@ def _download_text(url):
     try:
         response = requests.get(url, timeout=30)
         response.raise_for_status()
+        # RunningHub text outputs are UTF-8 files. Decode the raw bytes explicitly
+        # instead of relying on requests' charset guessing, which can turn Chinese
+        # text into mojibake such as "èº«ç©¿..." when no charset is declared.
+        return response.content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        # Keep a conservative fallback for unexpected legacy text files.
+        response.encoding = response.apparent_encoding or "utf-8"
         return response.text
     except Exception as e:
         print(f"Error downloading text: {e}")

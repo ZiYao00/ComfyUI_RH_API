@@ -1,0 +1,2 @@
+# Local secrets. Never commit this file.
+config.local.json

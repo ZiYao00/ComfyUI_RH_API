@@ -10,31 +10,53 @@ class RH_Config:
     """
     Configuration node for RunningHub API credentials and settings.
     This node stores your API key and workflow/app ID for use by other nodes.
-    If api_key or base_url are empty, they will be loaded from config.json file.
+    Empty values are loaded from config.local.json first, with config.json kept
+    as a backward-compatible fallback.
     """
 
     @staticmethod
     def load_config_file():
         """
-        Load configuration from config.json file
+        Load configuration from a local private config first, then fall back to
+        the legacy config.json for backward compatibility.
 
         Returns:
-            dict: Configuration dictionary or empty dict if file not found
+            dict: Configuration dictionary or empty dict if no valid file exists
         """
-        config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config.json")
+        plugin_root = os.path.dirname(os.path.dirname(__file__))
+        # Load the tracked legacy file first, then let non-empty values from the
+        # ignored local file override it. This keeps older installations working
+        # while making config.local.json the preferred place for secrets.
+        config_paths = [
+            os.path.join(plugin_root, "config.json"),
+            os.path.join(plugin_root, "config.local.json"),
+        ]
+        merged_config = {}
+        loaded_files = []
 
-        if os.path.exists(config_path):
+        for config_path in config_paths:
+            if not os.path.exists(config_path):
+                continue
+
             try:
                 with open(config_path, 'r', encoding='utf-8') as f:
                     config = json.load(f)
-                    print(f"✓ Loaded configuration from {config_path}")
-                    return config
+                if not isinstance(config, dict):
+                    raise ValueError("configuration root must be a JSON object")
+
+                for key, value in config.items():
+                    if value is not None and value != "":
+                        merged_config[key] = value
+                loaded_files.append(os.path.basename(config_path))
             except Exception as e:
-                print(f"⚠️ Error loading config.json: {e}")
-                return {}
+                print(f"⚠️ Error loading {os.path.basename(config_path)}: {e}")
+
+        if loaded_files:
+            print(f"✓ Loaded RH configuration from: {', '.join(loaded_files)}")
         else:
-            print(f"ℹ️ No config.json found at {config_path}")
-            return {}
+            print("ℹ️ No valid RH configuration file found")
+
+        return merged_config
     
     @classmethod
     def INPUT_TYPES(cls):
@@ -43,7 +65,7 @@ class RH_Config:
                 "api_key": ("STRING", {
                     "default": "",
                     "multiline": False,
-                    "tooltip": "Your RunningHub API key (leave empty to load from config.json)"
+                    "tooltip": "RunningHub API key. Leave empty to use config.local.json. Node input overrides the file value; prefer leaving this blank to avoid saving secrets in workflow JSON."
                 }),
                 "workflow_or_app_id": ("STRING", {
                     "default": "",
@@ -53,7 +75,7 @@ class RH_Config:
                 "base_url": ("STRING", {
                     "default": "https://www.runninghub.cn",
                     "multiline": False,
-                    "tooltip": "RunningHub API base URL (leave empty to load from config.json)"
+                    "tooltip": "RunningHub API base URL (leave empty to load from the config files)"
                 }),
             },
             "optional": {
@@ -74,9 +96,9 @@ class RH_Config:
         Create configuration dictionary for RunningHub API
 
         Args:
-            api_key: Your RunningHub API key (if empty, loads from config.json)
+            api_key: Your RunningHub API key (if empty, loads from the local config file)
             workflow_or_app_id: Workflow ID or AI App ID
-            base_url: API base URL (if empty, loads from config.json)
+            base_url: API base URL (if empty, loads from the local config file)
             is_ai_app: Whether this is an AI App (True) or workflow (False)
 
         Returns:
@@ -92,10 +114,10 @@ class RH_Config:
 
         # Validate required fields
         if not final_api_key:
-            raise ValueError("API key is required. Provide it in the node or in config.json.")
+            raise ValueError("API key is required. Provide it in the node or in config.local.json.")
 
         if not final_workflow_id:
-            raise ValueError("Workflow ID or AI App ID is required. Provide it in the node or in config.json.")
+            raise ValueError("Workflow ID or AI App ID is required. Provide it in the node or in a config file.")
 
         config = {
             "api_key": final_api_key,
@@ -105,9 +127,9 @@ class RH_Config:
         }
 
         # Show where values came from
-        api_source = "node input" if (api_key and api_key.strip()) else "config.json"
-        base_url_source = "node input" if (base_url and base_url.strip()) else "config.json"
-        workflow_id_source = "node input" if (workflow_or_app_id and workflow_or_app_id.strip()) else "config.json"
+        api_source = "node input" if (api_key and api_key.strip()) else "config file"
+        base_url_source = "node input" if (base_url and base_url.strip()) else "config file"
+        workflow_id_source = "node input" if (workflow_or_app_id and workflow_or_app_id.strip()) else "config file"
 
         print(f"✓ RH Config created: {'AI App' if is_ai_app else 'Workflow'} ID={final_workflow_id}")
         print(f"  API Key: loaded from {api_source}")

@@ -55,10 +55,19 @@ def _install_minimal_import_stubs():
 
 def load_rh_utils():
     _install_minimal_import_stubs()
+    package_name = "rh_utils_test_pkg"
+    sys.modules.pop(f"{package_name}.rh_client", None)
+    sys.modules.pop(f"{package_name}.rh_utils", None)
+    package = types.ModuleType(package_name)
+    package.__path__ = [str(ROOT / "nodes")]
+    sys.modules[package_name] = package
+
     module_path = ROOT / "nodes" / "rh_utils.py"
-    spec = importlib.util.spec_from_file_location("rh_utils_under_test", module_path)
+    module_name = f"{package_name}.rh_utils"
+    spec = importlib.util.spec_from_file_location(module_name, module_path)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
+    sys.modules[module_name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -98,6 +107,26 @@ class RHUtilsBaselineTests(unittest.TestCase):
         with mock.patch.object(self.rh_utils.requests, "post", return_value=response):
             result = self.rh_utils._check_task_status("task-1", "key", "https://example.invalid")
         self.assertEqual(result, outputs)
+
+    def test_check_task_status_supports_v2_query_mode(self):
+        outputs = [{"url": "https://example.invalid/a.jpg", "outputType": "jpg"}]
+        response = FakeResponse({
+            "taskId": "task-1",
+            "status": "SUCCESS",
+            "errorCode": "",
+            "errorMessage": "",
+            "results": outputs,
+        })
+        with mock.patch.object(self.rh_utils.requests, "post", return_value=response) as post:
+            result = self.rh_utils._check_task_status(
+                "task-1",
+                "key",
+                "https://example.invalid",
+                query_api="v2",
+            )
+        self.assertEqual(result, outputs)
+        self.assertTrue(post.call_args.args[0].endswith("/openapi/v2/query"))
+        self.assertEqual(post.call_args.kwargs["headers"]["Authorization"], "Bearer key")
 
     def test_upload_file_rewinds_seekable_stream_before_post(self):
         buffer = io.BytesIO(b"abc")

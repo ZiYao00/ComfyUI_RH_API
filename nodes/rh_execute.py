@@ -17,6 +17,10 @@ except ImportError:
     COMFY_AVAILABLE = False
 
 
+class RHTaskSubmissionUncertainError(RuntimeError):
+    """The create-task request may have reached RH, so automatic retry is unsafe."""
+
+
 class RH_Execute:
     """
     Execute RunningHub workflows or AI apps.
@@ -159,80 +163,60 @@ class RH_Execute:
             payload["instanceType"] = "plus"
 
 
-        # Send request with retry
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                print(f"Creating task (attempt {attempt + 1}/{max_retries})...")
-                headers = {'Content-Type': 'application/json'}
-                response = requests.post(url, data=json.dumps(payload), headers=headers, timeout=30)
-                response.raise_for_status()
+        # Creating a paid cloud task is intentionally single-attempt. If a POST
+        # reaches RH but the response is lost, retrying can create and charge a
+        # duplicate task. Ambiguous transport failures therefore require the user
+        # to check the RH task list before retrying manually.
+        print("Creating task (single safe attempt)...")
+        headers = {'Content-Type': 'application/json'}
+        try:
+            response = requests.post(url, data=json.dumps(payload), headers=headers, timeout=30)
+            response.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            raise RHTaskSubmissionUncertainError(
+                "RunningHub task submission status is uncertain because the HTTP request failed after submission may have started. "
+                "Do not auto-retry. Check the RunningHub task list before retrying manually. "
+                f"Transport error: {e}"
+            ) from e
 
-                result = response.json()
+        try:
+            result = response.json()
+        except Exception as e:
+            raise RHTaskSubmissionUncertainError(
+                "RunningHub returned an unreadable create-task response. The task may already exist. "
+                "Check the RunningHub task list before retrying manually."
+            ) from e
 
-                if result.get("code") == 0:
-                    data = result.get("data", {})
-                    task_id = data.get("taskId")
+        if result.get("code") == 0:
+            data = result.get("data", {})
+            task_id = data.get("taskId")
+            if not task_id:
+                raise RHTaskSubmissionUncertainError(
+                    "RunningHub reported create-task success but returned no taskId. "
+                    "The task may already exist; check the RunningHub task list before retrying."
+                )
 
-                    if not task_id:
-                        raise ValueError("No taskId in response")
+            print("ℹ Using HTTP polling for task monitoring (WebSocket disabled for stability)")
+            return task_id
 
-                    # WebSocket disabled - HTTP polling is more reliable
-                    # WebSocket can cause blocking issues with certain proxy configurations
-                    # HTTP polling works perfectly and is more stable
-                    print("ℹ Using HTTP polling for task monitoring (WebSocket disabled for stability)")
+        error_msg = str(result.get('msg', 'Unknown error'))
+        print(f"❌ RunningHub rejected task creation: {error_msg}")
 
-                    return task_id
-                else:
-                    error_msg = result.get('msg', 'Unknown error')
+        if "WORKFLOW_NOT_SAVED_OR_NOT_RUNNING" in error_msg:
+            raise Exception(
+                f"Workflow error: {error_msg}\n"
+                f"Please check:\n"
+                f"1. Workflow ID '{workflow_or_app_id}' exists on RunningHub\n"
+                f"2. Workflow is saved\n"
+                f"3. Workflow status is set to 'Running' (not Draft)\n"
+                f"4. You have access to this workflow"
+            )
+        if "INVALID_API_KEY" in error_msg:
+            raise Exception("Invalid API key. Please check your RH_Config node.")
+        if "INSUFFICIENT_BALANCE" in error_msg:
+            raise Exception("Insufficient balance. Please top up your RunningHub account.")
 
-                    # Check for business errors that should not be retried
-                    non_retryable_errors = [
-                        "WORKFLOW_NOT_SAVED_OR_NOT_RUNNING",
-                        "WORKFLOW_NOT_FOUND",
-                        "INVALID_WORKFLOW_ID",
-                        "INVALID_API_KEY",
-                        "INSUFFICIENT_BALANCE",
-                    ]
-
-                    if any(err in error_msg for err in non_retryable_errors):
-                        # These are business errors, not network errors - don't retry
-                        print(f"❌ Business error (not retrying): {error_msg}")
-
-                        # Provide helpful error messages
-                        if "WORKFLOW_NOT_SAVED_OR_NOT_RUNNING" in error_msg:
-                            raise Exception(
-                                f"Workflow error: {error_msg}\n"
-                                f"Please check:\n"
-                                f"1. Workflow ID '{workflow_or_app_id}' exists on RunningHub\n"
-                                f"2. Workflow is saved\n"
-                                f"3. Workflow status is set to 'Running' (not Draft)\n"
-                                f"4. You have access to this workflow"
-                            )
-                        elif "INVALID_API_KEY" in error_msg:
-                            raise Exception(f"Invalid API key. Please check your RH_Config node.")
-                        elif "INSUFFICIENT_BALANCE" in error_msg:
-                            raise Exception(f"Insufficient balance. Please top up your RunningHub account.")
-                        else:
-                            raise Exception(f"API error: {error_msg}")
-
-                    # For other errors, allow retry
-                    raise Exception(f"API error: {error_msg}")
-
-            except Exception as e:
-                error_str = str(e)
-
-                # Don't retry business errors
-                if "Workflow error:" in error_str or "Invalid API key" in error_str or "Insufficient balance" in error_str:
-                    raise
-
-                # Retry network errors
-                if attempt == max_retries - 1:
-                    raise Exception(f"Failed to create task: {e}")
-                print(f"Retry in {2 ** attempt} seconds...")
-                time.sleep(2 ** attempt)
-
-        raise Exception("Failed to create task after all retries")
+        raise Exception(f"RunningHub task creation failed: {error_msg}")
 
 
 

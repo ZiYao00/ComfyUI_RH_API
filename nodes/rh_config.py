@@ -83,6 +83,10 @@ class RH_Config:
                     "default": False,
                     "tooltip": "Enable this if calling an AI App instead of a workflow"
                 }),
+                "query_api": (["legacy", "v2"], {
+                    "default": "legacy",
+                    "tooltip": "Task result query API. Keep 'legacy' for existing workflows; use 'v2' only for compatibility testing until validated."
+                }),
             }
         }
     
@@ -91,7 +95,7 @@ class RH_Config:
     FUNCTION = "create_config"
     CATEGORY = "Ken-Chen/RH-API"
     
-    def create_config(self, api_key, workflow_or_app_id, base_url, is_ai_app=False):
+    def create_config(self, api_key, workflow_or_app_id, base_url, is_ai_app=False, query_api="legacy"):
         """
         Create configuration dictionary for RunningHub API
 
@@ -119,11 +123,16 @@ class RH_Config:
         if not final_workflow_id:
             raise ValueError("Workflow ID or AI App ID is required. Provide it in the node or in a config file.")
 
+        final_query_api = str(query_api or file_config.get("query_api", "legacy")).strip().lower()
+        if final_query_api not in {"legacy", "v2"}:
+            raise ValueError("query_api must be 'legacy' or 'v2'.")
+
         config = {
             "api_key": final_api_key,
             "workflow_or_app_id": final_workflow_id,
             "base_url": final_base_url,
             "is_ai_app": is_ai_app,
+            "query_api": final_query_api,
         }
 
         # Show where values came from

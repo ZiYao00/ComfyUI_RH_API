@@ -12,6 +12,7 @@ from io import BytesIO
 import os
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from .rh_client import RHClient
 
 # Dependency checks
 try:
@@ -38,126 +39,88 @@ try:
 except ImportError:
     SAFETENSORS_AVAILABLE = False
 
-def upload_file_to_rh(api_key, base_url, file_buffer, file_name, content_type, file_type):
+def upload_file_to_rh(
+    api_key,
+    base_url,
+    file_buffer,
+    file_name,
+    content_type,
+    file_type,
+    api_mode="legacy",
+):
+    """Upload a file through the RH compatibility client.
+
+    Existing nodes keep using the legacy endpoint by default. V2 is available as
+    an explicit compatibility path but is not selected automatically.
     """
-    Uploads a file to RunningHub with retry logic.
-
-    Args:
-        api_key (str): The API key for authentication.
-        base_url (str): The base URL of the RunningHub API.
-        file_buffer (BytesIO): The file content in a byte buffer.
-        file_name (str): The name of the file to be sent.
-        content_type (str): The MIME type of the file (e.g., 'image/png').
-        file_type (str): The type of file for RunningHub API ('image', 'video', etc.).
-
-    Returns:
-        str: The filename returned by the API upon successful upload.
-
-    Raises:
-        Exception: If the upload fails after all retries.
-    """
-    if isinstance(file_buffer, (bytes, bytearray)):
-        file_buffer = BytesIO(file_buffer)
-    elif hasattr(file_buffer, "read") and not hasattr(file_buffer, "seek"):
-        file_buffer = BytesIO(file_buffer.read())
-    elif not hasattr(file_buffer, "read") or not hasattr(file_buffer, "seek"):
-        raise TypeError("file_buffer must be bytes or a readable, seekable file-like object")
-
-    url = f"{base_url}/task/openapi/upload"
-    files = {'file': (file_name, file_buffer, content_type)}
-    data = {
-        'apiKey': api_key,
-        'fileType': file_type,
-    }
+    client = RHClient(api_key, base_url)
+    api_mode = str(api_mode or "legacy").strip().lower()
+    if api_mode not in {"legacy", "v2"}:
+        raise ValueError("api_mode must be 'legacy' or 'v2'.")
 
     max_retries = 5
-    filename = None
     for attempt in range(max_retries):
         try:
-            print(f"Upload attempt {attempt + 1}/{max_retries}...")
-            # Rewind buffer before each attempt
-            file_buffer.seek(0)
-            response = requests.post(url, data=data, files=files, timeout=60)
-            response.raise_for_status()
-
-            result = response.json()
-
-            if result.get('code') == 0:
-                filename = result.get('data', {}).get('fileName')
-                if filename:
-                    print(f"✓ File uploaded successfully: {filename}")
-                    return filename
-                else:
-                    raise ValueError("API response did not contain a fileName.")
+            print(f"Upload attempt {attempt + 1}/{max_retries} via {api_mode} API...")
+            if api_mode == "v2":
+                filename = client.upload_file_v2(
+                    file_buffer=file_buffer,
+                    file_name=file_name,
+                    content_type=content_type,
+                )
             else:
-                raise Exception(f"API returned an error: {result.get('msg')}")
-
+                filename = client.upload_file_legacy(
+                    file_buffer=file_buffer,
+                    file_name=file_name,
+                    content_type=content_type,
+                    file_type=file_type,
+                )
+            print(f"✓ File uploaded successfully: {filename}")
+            return filename
         except Exception as e:
             print(f"Upload attempt {attempt + 1} failed: {e}")
             if attempt == max_retries - 1:
-                raise Exception(f"Failed to upload file after {max_retries} attempts: {e}")
-
+                raise Exception(f"Failed to upload file after {max_retries} attempts: {e}") from e
             wait_time = 2 ** attempt
             print(f"Retrying in {wait_time} seconds...")
             time.sleep(wait_time)
 
-    # This line should not be reached if logic is correct, but as a safeguard:
     raise Exception("Failed to upload file and exhausted all retries.")
 
 
 # --- Task Monitoring and Output Processing Logic ---
 # These functions are moved from rh_execute.py to be shared with rh_download.py
 
-def _check_task_status(task_id, api_key, base_url):
-    """Check task status via HTTP"""
-    url = f"{base_url}/task/openapi/outputs"
-    payload = {
-        "taskId": task_id,
-        "apiKey": api_key
+def _check_task_status(task_id, api_key, base_url, query_api="legacy"):
+    """Query RunningHub through the compatibility client and keep legacy return shapes."""
+    result = RHClient(api_key, base_url).query_task(task_id, mode=query_api)
+
+    if result.status == "SUCCESS":
+        return result.outputs
+    if result.status == "NO_OUTPUT":
+        return {"taskStatus": "completed_no_output"}
+    if result.status in {"QUEUED", "RUNNING", "NETWORK_ERROR"}:
+        payload = {"taskStatus": result.status}
+        if result.error:
+            payload["error"] = result.error
+        return payload
+    if result.status in {"ERROR", "API_ERROR"}:
+        return {
+            "taskStatus": "error",
+            "error": result.error or f"RunningHub query failed via {result.api_mode}",
+        }
+
+    return {
+        "taskStatus": "error",
+        "error": f"Unexpected normalized RunningHub task status: {result.status}",
     }
-
-    try:
-        response = requests.post(url, json=payload, timeout=20)
-        response.raise_for_status()
-        result = response.json()
-
-        code = result.get("code")
-        msg = result.get("msg", "")
-        data = result.get("data")
-
-        if msg == "APIKEY_TASK_IS_QUEUED":
-            return {"taskStatus": "QUEUED"}
-
-        if msg == "APIKEY_TASK_IS_RUNNING":
-            return {"taskStatus": "RUNNING"}
-
-        if code == 0 and isinstance(data, list) and data:
-            return data
-
-        if code == 0 and isinstance(data, list) and not data:
-            return {"taskStatus": "completed_no_output"}
-
-        if code == 0 and data is None:
-            return {"taskStatus": "RUNNING"}
-
-        if code != 0:
-            error_details = msg
-            if isinstance(data, dict):
-                error_details = f"{msg}: {data.get('error', data)}"
-            return {"taskStatus": "error", "error": error_details, "error_data": data}
-
-        return {"taskStatus": "RUNNING"}
-
-    except requests.exceptions.Timeout as e:
-        return {"taskStatus": "NETWORK_ERROR", "error": f"Request timed out: {e}"}
-    except requests.exceptions.RequestException as e:
-        return {"taskStatus": "NETWORK_ERROR", "error": str(e)}
 
 
 def _monitor_task(task_id, config, timeout):
     """Monitor task until completion"""
     api_key = config["api_key"]
     base_url = config["base_url"]
+    query_api = config.get("query_api", "legacy")
 
     start_time = time.time()
     poll_interval = 5
@@ -178,7 +141,7 @@ def _monitor_task(task_id, config, timeout):
 
         if time.time() - last_poll >= poll_interval:
             last_poll = time.time()
-            status = _check_task_status(task_id, api_key, base_url)
+            status = _check_task_status(task_id, api_key, base_url, query_api=query_api)
 
             if isinstance(status, list):
                 print(f"✓ Task completed successfully!")
@@ -226,12 +189,13 @@ def _get_outputs(task_id, config, save_to_local, output_prefix):
     """Get and process task outputs"""
     api_key = config["api_key"]
     base_url = config["base_url"]
+    query_api = config.get("query_api", "legacy")
 
     max_retries = 30
     consecutive_network_errors = 0
     max_network_errors = 3
     for attempt in range(max_retries):
-        status = _check_task_status(task_id, api_key, base_url)
+        status = _check_task_status(task_id, api_key, base_url, query_api=query_api)
 
         if isinstance(status, list):
             return _process_outputs(status, save_to_local, output_prefix, task_id=task_id)
@@ -669,7 +633,8 @@ def get_task_status(config, task_id):
     """
     api_key = config["api_key"]
     base_url = config["base_url"]
-    return _check_task_status(task_id, api_key, base_url)
+    query_api = config.get("query_api", "legacy")
+    return _check_task_status(task_id, api_key, base_url, query_api=query_api)
 
 def cancel_task(config, task_id):
     """

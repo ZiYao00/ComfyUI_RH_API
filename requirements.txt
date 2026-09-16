@@ -1,8 +1,10 @@
+# Runtime dependency owned by this connector.
 requests>=2.31.0
-Pillow>=10.0.0
-numpy>=1.24.0
-torch>=2.0.0
-websocket-client>=1.8.0
-opencv-python>=4.8.0
-torchaudio>=2.0.0
 
+# ComfyUI already provides torch, numpy, Pillow and safetensors. Do not pin or
+# auto-upgrade those packages from this plugin because their versions are tied to
+# the user's ComfyUI / CUDA environment.
+#
+# Optional compatibility only (not auto-installed):
+# - opencv-python: legacy RH_Execute.video_frames extraction
+# - torchaudio: fallback audio decoding on older ComfyUI releases

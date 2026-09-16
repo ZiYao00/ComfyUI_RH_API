@@ -1,5 +1,5 @@
 {
-    "api_key": "YOUR_API_KEY_HERE",
-    "base_url": "https://www.runninghub.cn"
+  "api_key": "[REDACTED_SECRET]",
+  "base_url": "https://www.runninghub.cn",
+  "query_api": "legacy"
 }
-

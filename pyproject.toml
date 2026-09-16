@@ -3,7 +3,7 @@ name = "ComfyUI_RH_API"
 description = "This plugin makes it easy to call RunningHub cloud workflows and AI apps from ComfyUI with a clean, intuitive interface"
 version = "2.0.0"
 license = {file = "LICENSE"}
-dependencies = []
+dependencies = ["requests>=2.31.0"]
 
 [project.urls]
 Repository = "https://github.com/xuchenxu168/ComfyUI_RH_API"

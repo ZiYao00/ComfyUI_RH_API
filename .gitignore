@@ -1,2 +1,10 @@
 # Local secrets. Never commit this file.
 config.local.json
+
+# Python runtime caches.
+__pycache__/
+*.py[cod]
+
+# Test/runtime scratch files.
+.pytest_cache/
+.coverage

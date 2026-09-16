@@ -1,7 +1,7 @@
 """
 ComfyUI_RH_API - A simplified and user-friendly RunningHub API integration for ComfyUI
 Author: AI Assistant
-Version: 1.0.0
+Version: 2.0.0
 Description: Easy-to-use nodes for calling RunningHub cloud workflows and AI apps
 """
 

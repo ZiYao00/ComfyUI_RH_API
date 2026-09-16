@@ -59,8 +59,7 @@ Create an ignored `config.local.json` beside the plugin files:
 ```json
 {
   "api_key": "[REDACTED_SECRET]",
-  "base_url": "https://www.runninghub.cn",
-  "query_api": "legacy"
+  "base_url": "https://www.runninghub.cn"
 }
 ```
 

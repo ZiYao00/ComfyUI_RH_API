@@ -59,8 +59,7 @@ pip install -r requirements.txt
 ```json
 {
   "api_key": "[REDACTED_SECRET]",
-  "base_url": "https://www.runninghub.cn",
-  "query_api": "legacy"
+  "base_url": "https://www.runninghub.cn"
 }
 ```
 

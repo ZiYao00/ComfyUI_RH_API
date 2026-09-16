@@ -22,7 +22,7 @@ Recommended credential setup:
 
 `config.local.json` is ignored by Git.
 
-The optional `query_api` setting defaults to `legacy`. Keep that default for normal use. `v2` is available for explicit migration/A-B validation.
+The optional `query_api` selector on `RH Config` defaults to `legacy`. Keep that default for normal use. `v2` is available for explicit migration/A-B validation.
 
 ## 3. Execute a workflow
 

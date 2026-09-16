@@ -1,173 +1,99 @@
 # Quick Start Guide
 
-Get started with ComfyUI_RH_API in 5 minutes!
+## 1. Install
 
-## Prerequisites
+Place `ComfyUI_RH_API` under `ComfyUI/custom_nodes/`, install `requirements.txt`, and restart ComfyUI.
 
-1. ComfyUI installed and running
-2. RunningHub account with API key
-3. A workflow or AI app on RunningHub
+The requirements intentionally do not install or upgrade Torch/Torchaudio/CUDA packages.
 
-## Step 1: Install the Plugin
+## 2. Configure RunningHub
 
-### Option A: ComfyUI Manager
-1. Open ComfyUI Manager
-2. Search "ComfyUI_RH_API"
-3. Click Install
-4. Restart ComfyUI
+Add `RH Config`.
 
-### Option B: Manual
+Required workflow setting:
+
+- `workflow_or_app_id`: RunningHub workflow ID or AI app ID.
+
+Recommended credential setup:
+
+1. Copy `config.json.example` to `config.local.json`.
+2. Put the local credential in `config.local.json`.
+3. Leave the credential widget in `RH Config` blank.
+
+`config.local.json` is ignored by Git.
+
+The optional `query_api` setting defaults to `legacy`. Keep that default for normal use. `v2` is available for explicit migration/A-B validation.
+
+## 3. Execute a workflow
+
+Add `RH Execute`, connect `RH Config.config`, and queue the prompt.
+
+`RH Execute` waits for the RH task, preserves the original returned files, converts supported files to ComfyUI values, and returns the `task_id`.
+
+## 4. Override text parameters
+
+Use `RH Param`:
+
+- `node_id`: node ID in the RunningHub workflow.
+- `field_name`: usually `text` for a text widget.
+- `field_value`: replacement value.
+
+Chain multiple `RH Param` nodes through `previous_params` when needed, then connect the final `params` to `RH Execute`.
+
+## 5. Upload local media
+
+Use the matching upload node:
+
+- image -> `RH Upload Image`
+- audio -> `RH Load Audio Path` + `RH Upload Audio`
+- video -> `RH Upload Video`
+- generic file -> `RH Upload File`
+- latent -> `RH Upload Latent`
+
+Each upload node can optionally append the returned RH filename to the parameter list for the remote node/field.
+
+## 6. Understand output saving
+
+The connector is raw-first:
+
+```text
+RunningHub result
+  -> original file download
+  -> atomic local save/stage
+  -> ComfyUI media conversion
+```
+
+With `save_to_local=true`, the original RH file is saved in the ComfyUI output directory.
+
+A local conversion error does not delete the preserved RH file and does not silently return fake one-second audio.
+
+## 7. Video note
+
+Use `RH Execute.video` for current ComfyUI video pipelines. It is built from the preserved MP4 through ComfyUI's lazy file-backed video API when available.
+
+`video_frames` remains for older workflows and may consume significant memory because it materializes frames.
+
+## 8. If task submission is uncertain
+
+Cloud task creation is intentionally not auto-retried after an ambiguous HTTP failure. The remote task may already have been created and charged.
+
+Check the RunningHub task list before manually retrying.
+
+## 9. Basic validation after updating the connector
+
+Run:
+
 ```bash
-cd ComfyUI/custom_nodes
-git clone https://github.com/YOUR_USERNAME/ComfyUI_RH_API.git
-cd ComfyUI_RH_API
-pip install -r requirements.txt
-```
-Restart ComfyUI.
-
-## Step 2: Get Your API Key
-
-1. Go to https://www.runninghub.cn
-2. Login to your account
-3. Navigate to Settings → API Keys
-4. Copy your API key (keep it secret!)
-
-## Step 3: Find Your Workflow ID
-
-### For Workflows:
-1. Open your workflow on RunningHub
-2. Look at the URL or workflow settings
-3. Copy the workflow ID (alphanumeric string)
-
-### For AI Apps:
-1. Open your AI app on RunningHub
-2. Look at the URL
-3. Copy the app ID (numeric, e.g., 1941952386518904834)
-
-## Step 4: Create Your First Workflow
-
-### Simple Text-to-Image Example
-
-1. **Add RH_Config Node**
-   - Right-click → Add Node → RunningHub → 🌐 RH Config
-   - Fill in:
-     - `api_key`: Your API key from Step 2
-     - `workflow_or_app_id`: Your workflow ID from Step 3
-     - `base_url`: https://www.runninghub.cn (default)
-     - `is_ai_app`: False (for workflow) or True (for AI app)
-
-2. **Add RH_Execute Node**
-   - Right-click → Add Node → RunningHub → ▶️ RH Execute
-   - Connect `config` output from RH_Config to `config` input
-
-3. **Add Preview Image Node**
-   - Right-click → Add Node → image → Preview Image
-   - Connect `images` output from RH_Execute to `images` input
-
-4. **Run!**
-   - Click "Queue Prompt"
-   - Watch the console for progress
-   - See your generated images!
-
-### Visual Workflow:
-```
-┌─────────────┐
-│  RH_Config  │
-│             │
-│ api_key: ***│
-│ workflow_id │
-└──────┬──────┘
-       │ config
-       ↓
-┌─────────────┐
-│ RH_Execute  │
-└──────┬──────┘
-       │ images
-       ↓
-┌─────────────┐
-│Preview Image│
-└─────────────┘
+python3 -m unittest discover -s tests -p "test_*.py" -v
+python3 -m compileall -q nodes tests
+git diff --check
 ```
 
-## Step 5: Customize Parameters (Optional)
+Then run one existing RH workflow in ComfyUI and confirm:
 
-Want to change the prompt or other parameters?
+- RH backend shows a successful task.
+- Console prints `Preserved RH output` for each returned file.
+- The original file appears in ComfyUI `output` when `save_to_local=true`.
+- The expected ComfyUI output (`STRING`, `IMAGE`, `AUDIO`, or `VIDEO`) is usable downstream.
 
-1. **Add RH_Param Node**
-   - Right-click → Add Node → RunningHub → ⚙️ RH Param
-   - Fill in:
-     - `node_id`: "3" (example - check your workflow)
-     - `field_name`: "text" (the parameter name)
-     - `field_value`: "a beautiful sunset over mountains"
-
-2. **Connect to RH_Execute**
-   - Connect `params` output from RH_Param to `params` input of RH_Execute
-
-### Updated Workflow:
-```
-┌─────────────┐
-│  RH_Config  │
-└──────┬──────┘
-       │ config
-       ↓
-┌─────────────┐     ┌─────────────┐
-│  RH_Param   │────→│ RH_Execute  │
-│             │params└──────┬──────┘
-│ node_id: 3  │            │ images
-│ field: text │            ↓
-│ value: ...  │     ┌─────────────┐
-└─────────────┘     │Preview Image│
-                    └─────────────┘
-```
-
-## Step 6: Upload Images (Optional)
-
-Need to upload an image to your workflow?
-
-1. **Add Load Image Node** (ComfyUI built-in)
-   - Load your input image
-
-2. **Add RH_UploadImage Node**
-   - Right-click → Add Node → RunningHub → 📤 RH Upload Image
-   - Connect `config` from RH_Config
-   - Connect `image` from Load Image
-
-3. **Add RH_Param Node**
-   - Set `node_id` to your image input node
-   - Set `field_name` to "image"
-   - Connect `filename` from RH_UploadImage to `field_value`
-
-4. **Connect to RH_Execute**
-   - Connect `params` to RH_Execute
-
-## Common Issues
-
-### "API key is required"
-→ Make sure you entered your API key in RH_Config
-
-### "Task timeout"
-→ Increase `timeout` in RH_Execute (default: 600 seconds)
-
-### "No output"
-→ Check if your workflow has output nodes enabled
-
-### WebSocket warnings
-→ Normal! The plugin will use HTTP polling instead
-
-## Next Steps
-
-- Check out the [examples](examples/) directory for more workflows
-- Read the full [README](README.md) for detailed documentation
-- Explore advanced features like parameter chaining
-- Try using AI Apps with `is_ai_app=True`
-
-## Need Help?
-
-- GitHub Issues: Report bugs or ask questions
-- RunningHub Docs: https://www.runninghub.cn/docs
-- Check the console output for detailed error messages
-
----
-
-Happy creating! 🎨✨
-
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for maintenance rules and the full real-regression matrix.

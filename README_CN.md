@@ -2,144 +2,169 @@
 
 [English](./README.md) | [中文](./README_CN.md)
 
----
+用于在本地 ComfyUI 中调用 RunningHub 工作流和 AI 应用的一组自定义节点。
 
-🚀 **一个强大、易用的 ComfyUI RunningHub API 集成插件**
+## 核心能力
 
-这套自定义节点允许您将本地的 ComfyUI 连接到 [RunningHub](https://www.runninghub.cn) 云端平台。从此，您可以直接在本地 ComfyUI 中调用高性能云端 GPU 来运行复杂和计算密集型的工作流，打破本地硬件的限制。
+- 在 ComfyUI 内直接调用 RunningHub 工作流和 AI 应用。
+- 支持文本参数以及图片、音频、视频、通用文件等输入上传。
+- **Raw-first 输出链**：先保存 RunningHub 原始文件，再转换为 ComfyUI 媒体对象。
+- 在支持的环境中输出 `IMAGE`、`AUDIO`、`VIDEO`、`STRING`、`LATENT`。
+- 下载或转换失败时明确报错，不再用“看似成功”的占位媒体掩盖错误。
+- 默认继续使用 RH Legacy 结果查询，同时提供显式 V2 查询模式用于迁移验证。
+- 优先把本地凭据放在 Git 忽略的 `config.local.json`，避免写入工作流 JSON。
 
-## ✨ 核心功能
+长期兼容规则见 [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)。
 
-- **无缝云端执行**: 无需离开 ComfyUI 界面，即可运行任何 RunningHub 工作流或 AI 应用。
-- **全功能节点套件**: 包含超过15个节点，涵盖配置、执行、参数设置、文件上传和批量处理。
-- **多种文件处理**: 为图片、视频、音频、潜空间张量（Latent）和通用文件提供专门的上传节点。
-- **强大的批量处理**: 使用专门的批处理节点，通过不同的参数多次运行工作流，实现大规模任务的自动化。
-- **直观的用户界面**: 节点设计清晰、易于连接和配置。
-- **自动化的输出处理**: 自动从您的云端任务下载并处理图片、视频、音频、文本和潜空间张量。
-- **本地文件保存**: 可选择将所有输出结果以规范的命名方式直接保存到您的 ComfyUI 输出目录。
-- **安全配置**: 支持外部 `config.json` 文件，以保护您的 API 密钥安全，并避免重复输入。
+## 安装
 
-## 📦 安装方法
+### ComfyUI Manager
 
-### 方法一：使用 ComfyUI Manager (推荐)
+搜索 `ComfyUI_RH_API`，安装后重启 ComfyUI。
 
-1.  安装 [ComfyUI Manager](https://github.com/ltdrdata/ComfyUI-Manager)。
-2.  打开 ComfyUI Manager，点击 `Install Custom Nodes`。
-3.  搜索 `ComfyUI_RH_API` 并点击 `Install`。
-4.  重启 ComfyUI。
+### 手动安装
 
-### 方法二：手动安装 (Git)
+把仓库放到 `ComfyUI/custom_nodes/ComfyUI_RH_API`，然后只安装本插件自身声明的依赖：
 
-1.  进入 ComfyUI 的 `custom_nodes` 目录:
-    ```bash
-    cd ComfyUI/custom_nodes/
-    ```
-2.  克隆本仓库:
-    ```bash
-    git clone https://github.com/Ken-Chen-CN/ComfyUI_RH_API.git
-    ```
-3.  安装所需的依赖:
-    ```bash
-    cd ComfyUI_RH_API/
-    pip install -r requirements.txt
-    ```
-4.  重启 ComfyUI。
-
-## 🚀 快速入门指南
-
-只需几分钟，即可运行您的第一个云端工作流！
-
-1.  **获取凭证**: 登录 [RunningHub](https://www.runninghub.cn)，进入您想运行的工作流，点击“API调用”，然后复制 **工作流ID** 和 **API Key**。
-2.  **配置节点**: 在 ComfyUI 中，添加 `🌐 RH Config` 节点，并将您的 API Key 和工作流 ID 粘贴到相应的字段中。
-3.  **执行**: 添加 `▶️ RH Execute` 节点，将 `RH Config` 节点的 `config` 输出连接到它，然后点击 `Queue Prompt`。
-
-就这么简单！节点将在云端执行工作流并下载结果。
-
-```mermaid
-graph TD
-    A[🌐 RH Config] -- config --> B[▶️ RH Execute];
-    B -- images --> C[Preview Image];
+```bash
+pip install -r requirements.txt
 ```
 
-## 📚 节点参考
+本插件不会主动固定或升级 ComfyUI 已有的 Torch / CUDA 栈。
 
-所有节点都可以在 ComfyUI 的 **Ken-Chen/RH-API** 分类下找到。
+## 快速使用
 
-### 核心节点
+1. 添加 `RH Config`，填写 RunningHub 工作流/应用 ID。
+2. 建议把节点里的凭据字段留空，通过 `config.local.json` 提供。
+3. 添加 `RH Execute` 并连接 `config`。
+4. 如需覆盖云端工作流输入，添加 `RH Param` 或对应上传节点。
+5. Queue Prompt 执行。
 
-#### 🌐 RH Config
-配置与 RunningHub API 的连接。这是所有工作流的起点。
-- **输入**: `api_key`, `workflow_or_app_id`, `base_url` (可选), `is_ai_app` (复选框)。
-- **输出**: `config` (供其他 RH 节点使用的配置对象)。
+`RH Execute` 当前输出：
 
-#### ▶️ RH Execute
-执行云端工作流并下载结果。
-- **输入**: `config`, `params` (可选), `timeout`, `save_to_local` (复选框), `output_prefix`。
-- **输出**: `images`, `video_frames`, `text`, `audio`, `video`, `latent`。
+- `images`
+- `video_frames`（旧工作流兼容输出）
+- `text`
+- `audio`
+- `video`
+- `latent`
+- `task_id`
 
-#### ⚙️ RH Param
-为云端工作流设置单个参数。可以链式连接多个节点以设置多个参数。
-- **输入**: `node_id`, `field_name`, `field_value`, `previous_params` (用于链式连接)。
-- **输出**: `params`。
+新的视频工作流应优先使用 `video`。`video_frames` 对长视频可能占用大量内存，只作为兼容能力保留。
 
-### 上传节点
+## 配置
 
-这些节点将本地数据上传到 RunningHub，并可以选择同时创建参数条目。
-
-- **📤 RH Upload Image**: 上传一张图片。
-- **🎵 RH Load Audio Path** & **📤 RH Upload Audio**: 一个包含播放器控件的双节点系统，用于上传本地音频文件。
-- **📤 RH Upload Video**: 从您的 `ComfyUI/input` 目录上传视频文件。
-- **📤 RH Upload File**: 上传任何通用文件 (例如 `.txt`, `.json`)。
-- **📤 RH Upload Latent**: 将一个潜空间张量（Latent）作为 `.safetensors` 文件上传。
-
-### 批处理节点
-
-- **📤 RH Batch Upload Image**: 上传多张图片，每张图片作为一次独立任务运行的参数。
-- **📤 RH Multi-Input Image**: 上传多张图片，用于*单次*任务运行中的不同输入。
-- **📦 RH Param Bundle**: 将多个参数集打包在一起。每个参数集将触发一次独立任务运行。
-- **⏯️ RH Batch Execute**: 使用 `param_bundle` 执行一批任务。
-
-### 工具及高级节点
-
-- **📥 RH Download Results**: 从一个先前已执行的 `task_id` 下载结果。
-- **🛠️ RH Task Manager**: 获取任务状态或取消一个正在运行的任务。
-- **🖼️ RH Image Selector**: 从一批图片中选择一张。
-- **📝 RH Text Display**: 在界面和控制台中显示文本输出。
-
-## 🔧 高级用法
-
-### 使用配置文件 (推荐)
-
-为了避免重复输入您的 API Key，您可以在 `ComfyUI_RH_API` 目录下创建一个 `config.json` 文件。复制 `config.json.example` 的内容并填入您的信息。
+在插件目录创建不会被 Git 跟踪的 `config.local.json`：
 
 ```json
 {
-    "api_key": "YOUR_API_KEY_HERE",
-    "base_url": "https://www.runninghub.cn"
+  "api_key": "[REDACTED_SECRET]",
+  "base_url": "https://www.runninghub.cn",
+  "query_api": "legacy"
 }
 ```
-如果 `RH_Config` 节点中的相应字段为空，它将自动使用这些值。
 
-### 示例工作流
+加载优先级：
 
-`examples/` 目录包含多个预置的工作流，用于演示核心功能。将它们加载到 ComfyUI 中即可查看它们如何工作！
+```text
+RH Config 节点非空输入
+    > config.local.json
+    > 旧版 config.json
+```
 
-- **`basic_execute_download.json`**: 最简单的文生图工作流。
-- **`batch_processing.json`**: 演示如何并行运行多个任务。
-- **`latent_transport.json`**: 展示如何上传、处理并下载一个潜空间张量。
-- **`workflow_inpainting_with_mask.json`**: 使用（当前已禁用）的蒙版上传功能的示例。
+旧 `config.json` 仍保留读取能力，仅用于兼容已有安装。
 
-## 🐛 问题排查
+### query_api
 
-- **"API key is required"**: 确保您已在 `RH_Config` 节点或 `config.json` 文件中正确输入了您的 API Key。
-- **"Task timeout"**: 云端工作流的运行时间超过了 `RH_Execute` 节点中设置的 `timeout` 值。请尝试增加它。
-- **节点未出现**: 确保您在安装后已重启 ComfyUI。
+`RH Config` 新增可选 `query_api`：
 
-## 🤝 贡献
+- `legacy`：默认，兼容已有工作流。
+- `v2`：显式调用 RunningHub V2 查询接口，用于迁移测试。
 
-欢迎各种贡献、问题反馈和功能请求！请随时在我们的 [GitHub 仓库](https://github.com/Ken-Chen-CN/ComfyUI_RH_API) 中提交 Issue 或 Pull Request。
+在同一个真实 task 上完成 Legacy/V2 A-B 验证前，不会自动切换默认查询接口。
 
-## 📝 许可证
+## 输出机制
 
-本项目采用 MIT 许可证。详情请见 [LICENSE](./LICENSE) 文件。
+当前输出链固定为：
 
+```text
+RH 返回结果
+  -> 统一解析类型和顺序
+  -> 原子下载远端原始文件
+  -> 保存/暂存原始文件
+  -> 从本地文件转换为 ComfyUI 媒体对象
+```
+
+如果文件已经从 RH 下载成功，但本地媒体转换失败：
+
+- 原始文件仍会保留；
+- 节点明确报出转换错误；
+- 不会再用 1 秒静音等占位内容伪装成功。
+
+`save_to_local=true` 时，原始 RH 输出保存在 ComfyUI `output` 目录。关闭时，为了支持 `VIDEO` / `AUDIO` 等对象，文件会暂存在 ComfyUI 或系统临时目录。
+
+## 上传节点
+
+现有节点包括：
+
+- `RH Upload Image`
+- `RH Load Audio Path` + `RH Upload Audio`
+- `RH Upload Video`
+- `RH Upload File`
+- `RH Upload Latent`
+- Batch / Multi Image 上传节点
+
+当前上传默认继续使用 Legacy 接口。内部 `RHClient` 已包含 V2 文件上传适配器，后续迁移无需重写每个上传节点。
+
+## 任务提交安全
+
+RunningHub 云端任务可能产生费用，所以任务创建采用**单次安全提交**。
+
+如果出现以下情况：
+
+- POST 请求可能已经到达 RH，但响应丢失；
+- 返回内容无法解析；
+- 返回成功但没有 `taskId`；
+
+插件会报告“任务提交状态不确定”，不会自动再次创建付费任务。
+
+此时应先进入 RunningHub 后台确认任务是否已经存在，再决定是否手动重试。
+
+## 常见问题
+
+### RH 后台有文件，但 ComfyUI 报转换失败
+
+表示 Raw 下载已经成功，但本地 ComfyUI 媒体适配失败。先检查控制台日志和已经保存的原始文件，不要立即重新跑一次付费云端任务。
+
+### 轮询过程中网络异常
+
+网络错误与 `RUNNING` 已明确区分。连续查询失败后会停止并报告连接错误，不会继续假装云端仍在正常运行。
+
+### 视频输出
+
+当前 ComfyUI 使用 lazy `VideoFromFile` 路线生成 `VIDEO`，不会为了标准视频输出而把整段 MP4 全部解成 float32 图片批次。
+
+如果 ComfyUI 版本过旧、缺少该 API，原始 MP4 仍会保存，并明确报告本地转换失败。
+
+### 可选旧兼容依赖
+
+- OpenCV：只用于旧 `video_frames` 抽帧输出。
+- Torchaudio：只作为旧 ComfyUI 环境下的音频解码 fallback。
+
+不要为了本插件单独升级 Torchaudio，从而破坏 ComfyUI 当前 Torch / CUDA 版本匹配。
+
+## 测试
+
+项目测试只使用 Python 标准库 mock/stub，不会另外安装一套 Torch：
+
+```bash
+python3 -m unittest discover -s tests -p "test_*.py" -v
+python3 -m compileall -q nodes tests
+git diff --check
+```
+
+单元测试不能替代真实 ComfyUI + RunningHub 回归。正式发布或后续自建仓库前，至少验证 Text / Image / Audio / Video 四类真实 RH 输出。
+
+## License
+
+MIT，详见 [LICENSE](./LICENSE)。

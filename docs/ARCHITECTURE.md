@@ -190,6 +190,11 @@ Minimum real regression matrix:
 | Audio | yes | yes | AUDIO |
 | Video | yes | yes | VIDEO |
 
+Current real-world validation status (2026-09-16):
+
+- **Audio: PASS.** A real RunningHub audio-generation workflow completed successfully, the returned audio file was preserved in the local ComfyUI output path, and the previous one-second fallback symptom is no longer present.
+- **Video: PENDING.** The refactored VIDEO path has unit-test coverage but has not yet been revalidated with a real RunningHub video task after the output-layer changes.
+
 Also verify Chinese UTF-8 text, multiple outputs, no-output tasks, and a deliberate conversion/download failure path when practical.
 
 ## 12. Version-control policy for this maintenance branch

@@ -8,7 +8,7 @@ import time
 import json
 
 # Import shared logic from rh_utils
-from .rh_utils import _monitor_task, _get_outputs, _create_placeholder_image
+from .rh_utils import _monitor_task, _get_outputs, _create_placeholder_image, _create_placeholder_latent
 
 try:
     import comfy.utils
@@ -109,7 +109,8 @@ class RH_Execute:
                 _create_placeholder_image("No video output"),
                 "",
                 None,
-                None
+                None,
+                _create_placeholder_latent(),
             )
 
         print("=" * 60)

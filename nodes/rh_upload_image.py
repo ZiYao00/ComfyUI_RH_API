@@ -120,7 +120,7 @@ class RH_UploadImage:
             raise Exception(f"Failed to upload image: {e}")
 
         # Create parameter if node_id is provided
-        params = previous_params if previous_params else []
+        params = list(previous_params) if previous_params else []
 
         if node_id and node_id.strip():
             # Determine actual field name

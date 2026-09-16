@@ -33,7 +33,7 @@ except ImportError:
     AUDIO_AVAILABLE = False
 
 try:
-    from safetensors.torch import load
+    from safetensors.torch import load_file
     SAFETENSORS_AVAILABLE = True
 except ImportError:
     SAFETENSORS_AVAILABLE = False
@@ -56,6 +56,13 @@ def upload_file_to_rh(api_key, base_url, file_buffer, file_name, content_type, f
     Raises:
         Exception: If the upload fails after all retries.
     """
+    if isinstance(file_buffer, (bytes, bytearray)):
+        file_buffer = BytesIO(file_buffer)
+    elif hasattr(file_buffer, "read") and not hasattr(file_buffer, "seek"):
+        file_buffer = BytesIO(file_buffer.read())
+    elif not hasattr(file_buffer, "read") or not hasattr(file_buffer, "seek"):
+        raise TypeError("file_buffer must be bytes or a readable, seekable file-like object")
+
     url = f"{base_url}/task/openapi/upload"
     files = {'file': (file_name, file_buffer, content_type)}
     data = {
@@ -141,10 +148,10 @@ def _check_task_status(task_id, api_key, base_url):
 
         return {"taskStatus": "RUNNING"}
 
-    except requests.exceptions.Timeout:
-        return {"taskStatus": "RUNNING"} # Treat timeout as still running
+    except requests.exceptions.Timeout as e:
+        return {"taskStatus": "NETWORK_ERROR", "error": f"Request timed out: {e}"}
     except requests.exceptions.RequestException as e:
-        return {"taskStatus": "RUNNING"} # Treat network error as still running
+        return {"taskStatus": "NETWORK_ERROR", "error": str(e)}
 
 
 def _monitor_task(task_id, config, timeout):
@@ -158,6 +165,8 @@ def _monitor_task(task_id, config, timeout):
     last_status = None
     last_log_time = 0
     log_interval = 15
+    consecutive_network_errors = 0
+    max_network_errors = 3
 
     print("Monitoring task...")
     print(f"Task URL: https://www.runninghub.cn/task/detail/{task_id}")
@@ -185,9 +194,26 @@ def _monitor_task(task_id, config, timeout):
                     print(f"[{int(elapsed)}s] Task is still {task_status}...")
                     last_log_time = time.time()
 
+                if task_status == "NETWORK_ERROR":
+                    consecutive_network_errors += 1
+                    error_msg = status.get("error", "Unknown network error")
+                    print(
+                        f"⚠ Network error while checking task "
+                        f"({consecutive_network_errors}/{max_network_errors}): {error_msg}"
+                    )
+                    if consecutive_network_errors >= max_network_errors:
+                        raise ConnectionError(
+                            f"Failed to query RunningHub task after {max_network_errors} consecutive network errors: {error_msg}"
+                        )
+                else:
+                    consecutive_network_errors = 0
+
                 if task_status == "error":
                     error_msg = status.get('error', 'Unknown error')
                     raise Exception(f"Task failed on RunningHub server: {error_msg}")
+                if task_status == "completed_no_output":
+                    print("✓ Task completed with no output files.")
+                    break
             else:
                 if time.time() - last_log_time > log_interval:
                     print(f"[{int(elapsed)}s] Unexpected status response. Retrying...")
@@ -202,6 +228,8 @@ def _get_outputs(task_id, config, save_to_local, output_prefix):
     base_url = config["base_url"]
 
     max_retries = 30
+    consecutive_network_errors = 0
+    max_network_errors = 3
     for attempt in range(max_retries):
         status = _check_task_status(task_id, api_key, base_url)
 
@@ -210,11 +238,21 @@ def _get_outputs(task_id, config, save_to_local, output_prefix):
 
         if isinstance(status, dict):
             task_status = status.get("taskStatus")
+            if task_status == "NETWORK_ERROR":
+                consecutive_network_errors += 1
+                error_msg = status.get("error", "Unknown network error")
+                if consecutive_network_errors >= max_network_errors:
+                    raise ConnectionError(
+                        f"Failed to fetch RunningHub outputs after {max_network_errors} consecutive network errors: {error_msg}"
+                    )
+            else:
+                consecutive_network_errors = 0
+
             if task_status == "error":
                 raise Exception(f"Task failed: {status.get('error')}")
             elif task_status == "completed_no_output":
                 print("Task completed but produced no output.")
-                return None # Return None for no output
+                return None
 
         time.sleep(2)
 
@@ -393,21 +431,29 @@ def _download_audio(url):
         return None
 
 def _download_latent(url):
-    if not SAFETENSORS_AVAILABLE: return None
+    if not SAFETENSORS_AVAILABLE:
+        return None
+
+    tmp_path = None
     try:
+        import tempfile
+
         response = requests.get(url, timeout=60)
         response.raise_for_status()
-        # safetensors.torch.load expects a file path, so we use a temp file
         with tempfile.NamedTemporaryFile(delete=False, suffix=".safetensors") as tmp:
             tmp.write(response.content)
             tmp_path = tmp.name
 
-        latent = load(tmp_path)
-        os.unlink(tmp_path)
-        return latent
+        return load_file(tmp_path)
     except Exception as e:
         print(f"Error downloading latent: {e}")
         return None
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
 
 def _create_placeholder_image(text):
     img = Image.new('RGB', (512, 128), color=(50, 50, 50))

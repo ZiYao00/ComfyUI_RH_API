@@ -59,7 +59,7 @@ class RH_UploadAudio:
         except Exception as e:
             raise Exception(f"Failed to upload audio: {e}")
 
-        params = previous_params if previous_params else []
+        params = list(previous_params) if previous_params else []
         if node_id and node_id.strip():
             actual_field_name = custom_field_name.strip() if field_name == "custom" else field_name
             if not actual_field_name:

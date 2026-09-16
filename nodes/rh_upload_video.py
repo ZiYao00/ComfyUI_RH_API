@@ -142,7 +142,7 @@ class RH_UploadVideo:
             raise Exception(f"Failed to upload video: {e}") from e
 
         # Create parameter if node_id is provided
-        params = previous_params if previous_params else []
+        params = list(previous_params) if previous_params else []
 
         if node_id and node_id.strip():
             # Determine actual field name

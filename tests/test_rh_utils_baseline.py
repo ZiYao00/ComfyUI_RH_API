@@ -119,12 +119,66 @@ class RHUtilsBaselineTests(unittest.TestCase):
             )
         self.assertEqual(result, "server-name.bin")
 
+    def test_upload_file_accepts_raw_bytes(self):
+        def fake_post(url, data, files, timeout):
+            uploaded = files["file"][1]
+            self.assertTrue(hasattr(uploaded, "read"))
+            self.assertEqual(uploaded.read(), b"abc")
+            return FakeResponse({"code": 0, "data": {"fileName": "server-name.bin"}})
+
+        with mock.patch.object(self.rh_utils.requests, "post", side_effect=fake_post), \
+             mock.patch.object(self.rh_utils.time, "sleep", return_value=None):
+            result = self.rh_utils.upload_file_to_rh(
+                api_key="key",
+                base_url="https://example.invalid",
+                file_buffer=b"abc",
+                file_name="sample.bin",
+                content_type="application/octet-stream",
+                file_type="file",
+            )
+        self.assertEqual(result, "server-name.bin")
+
+    def test_check_task_status_reports_network_error_explicitly(self):
+        error = self.rh_utils.requests.exceptions.RequestException("offline")
+        with mock.patch.object(self.rh_utils.requests, "post", side_effect=error):
+            result = self.rh_utils._check_task_status("task-1", "key", "https://example.invalid")
+        self.assertEqual(result["taskStatus"], "NETWORK_ERROR")
+        self.assertIn("offline", result["error"])
+
+    def test_monitor_stops_immediately_for_completed_no_output(self):
+        statuses = [
+            {"taskStatus": "completed_no_output"},
+            [{"fileUrl": "https://example.invalid/late.png", "fileType": "png"}],
+        ]
+        ticks = iter(range(100, 1000, 10))
+        with mock.patch.object(self.rh_utils, "_check_task_status", side_effect=statuses) as check_status, \
+             mock.patch.object(self.rh_utils.time, "time", side_effect=lambda: next(ticks)), \
+             mock.patch.object(self.rh_utils.time, "sleep", return_value=None):
+            self.rh_utils._monitor_task(
+                "task-1",
+                {"api_key": "key", "base_url": "https://example.invalid"},
+                timeout=60,
+            )
+        self.assertEqual(check_status.call_count, 1)
+
     def test_download_text_decodes_utf8_bom(self):
         content = b"\xef\xbb\xbf" + "中文文本".encode("utf-8")
         response = FakeResponse(content=content)
         with mock.patch.object(self.rh_utils.requests, "get", return_value=response):
             result = self.rh_utils._download_text("https://example.invalid/result.txt")
         self.assertEqual(result, "中文文本")
+
+    def test_download_latent_uses_load_file_and_cleans_temp_file(self):
+        response = FakeResponse(content=b"fake-safetensors")
+        self.rh_utils.SAFETENSORS_AVAILABLE = True
+        self.rh_utils.load_file = mock.Mock(return_value={"samples": "ok"})
+
+        with mock.patch.object(self.rh_utils.requests, "get", return_value=response):
+            result = self.rh_utils._download_latent("https://example.invalid/result.safetensors")
+
+        self.assertEqual(result, {"samples": "ok"})
+        temp_path = self.rh_utils.load_file.call_args.args[0]
+        self.assertFalse(pathlib.Path(temp_path).exists())
 
 
 if __name__ == "__main__":

@@ -86,7 +86,7 @@ class RH_Param:
             Updated parameter list
         """
         # Start with previous params or empty list
-        params = previous_params if previous_params else []
+        params = list(previous_params) if previous_params else []
 
         # Use custom field name if field_name is 'custom' and custom_field_name is provided
         actual_field_name = field_name

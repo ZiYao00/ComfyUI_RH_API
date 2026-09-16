@@ -2,9 +2,8 @@
 RH_BatchExecute Node - Execute a batch of tasks on RunningHub
 """
 
-import json
-import requests
 from .rh_utils import _validate_config
+from .rh_client import RHClient, RHTaskSubmissionUncertainError
 
 class RH_BatchExecute:
     """
@@ -31,8 +30,7 @@ class RH_BatchExecute:
         Executes a task for each parameter set in the bundle.
         """
         _validate_config(config)
-        api_key = config["api_key"]
-        base_url = config["base_url"]
+        client = RHClient(config["api_key"], config["base_url"])
 
         if not workflow_id:
             raise ValueError("Workflow ID is required.")
@@ -41,32 +39,22 @@ class RH_BatchExecute:
 
         print(f"🚀 Starting Batch Execution for {len(param_bundle)} tasks...")
         task_ids = []
-        # Use the correct endpoint for creating tasks, same as in rh_execute
-        url = f"{base_url}/task/openapi/create"
 
         for i, params_list in enumerate(param_bundle):
             print(f"  - Submitting task {i+1}/{len(param_bundle)}...")
             try:
-                # Use the correct payload structure with 'nodeInfoList'
-                payload = {
-                    "apiKey": api_key,
-                    "workflowId": workflow_id,
-                    "nodeInfoList": params_list,
-                }
-
-                headers = {'Content-Type': 'application/json'}
-                response = requests.post(url, data=json.dumps(payload), headers=headers, timeout=20)
-                response.raise_for_status()
-                result = response.json()
-
-                if result.get("code") == 0 and result.get("data", {}).get("taskId"):
-                    task_id = result["data"]["taskId"]
-                    task_ids.append(task_id)
-                    print(f"    ✓ Task submitted successfully. Task ID: {task_id}")
-                else:
-                    error_msg = result.get("msg", "Unknown error")
-                    print(f"    ❌ Task submission failed: {error_msg}")
-
+                task_id = client.create_task(
+                    workflow_or_app_id=workflow_id,
+                    params=params_list,
+                    is_ai_app=False,
+                    use_high_performance=False,
+                )
+                task_ids.append(task_id)
+                print(f"    ✓ Task submitted successfully. Task ID: {task_id}")
+            except RHTaskSubmissionUncertainError:
+                # Stop immediately: continuing a paid batch after an ambiguous
+                # submission makes duplicate-task reconciliation unsafe.
+                raise
             except Exception as e:
                 print(f"    ❌ An exception occurred during task submission: {e}")
 

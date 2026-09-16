@@ -9,9 +9,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import io
+import json
 from typing import Any, Optional
 
 import requests
+
+
+class RHTaskSubmissionUncertainError(RuntimeError):
+    """The create-task request may have reached RH, so automatic retry is unsafe."""
 
 
 @dataclass
@@ -38,6 +43,97 @@ class RHClient:
         if mode == "v2":
             return self.query_task_v2(task_id)
         return self.query_task_legacy(task_id)
+
+    def create_task(
+        self,
+        workflow_or_app_id: str,
+        params: Optional[list[dict]] = None,
+        is_ai_app: bool = False,
+        use_high_performance: bool = False,
+        timeout: int = 30,
+    ) -> str:
+        """Create one RH task with a single safe POST attempt."""
+        params = params or []
+        if is_ai_app:
+            url = f"{self.base_url}/task/openapi/ai-app/run"
+            payload = {
+                "webappId": int(workflow_or_app_id),
+                "apiKey": self.api_key,
+                "nodeInfoList": params,
+            }
+        else:
+            url = f"{self.base_url}/task/openapi/create"
+            payload = {
+                "workflowId": workflow_or_app_id,
+                "apiKey": self.api_key,
+                "nodeInfoList": params,
+            }
+
+        if use_high_performance:
+            payload["instanceType"] = "plus"
+
+        try:
+            response = self.session.post(
+                url,
+                data=json.dumps(payload),
+                headers={"Content-Type": "application/json"},
+                timeout=timeout,
+            )
+            response.raise_for_status()
+        except self.session.exceptions.RequestException as exc:
+            raise RHTaskSubmissionUncertainError(
+                "RunningHub task submission status is uncertain because the HTTP request failed after submission may have started. "
+                "Do not auto-retry. Check the RunningHub task list before retrying manually. "
+                f"Transport error: {exc}"
+            ) from exc
+
+        try:
+            result = response.json()
+        except Exception as exc:
+            raise RHTaskSubmissionUncertainError(
+                "RunningHub returned an unreadable create-task response. The task may already exist. "
+                "Check the RunningHub task list before retrying manually."
+            ) from exc
+
+        if result.get("code") == 0:
+            task_id = (result.get("data") or {}).get("taskId")
+            if task_id:
+                return task_id
+            raise RHTaskSubmissionUncertainError(
+                "RunningHub reported create-task success but returned no taskId. "
+                "The task may already exist; check the RunningHub task list before retrying."
+            )
+
+        error_msg = str(result.get("msg", "Unknown error"))
+        if "WORKFLOW_NOT_SAVED_OR_NOT_RUNNING" in error_msg:
+            raise RuntimeError(
+                f"Workflow error: {error_msg}\n"
+                f"Please check:\n"
+                f"1. Workflow ID '{workflow_or_app_id}' exists on RunningHub\n"
+                f"2. Workflow is saved\n"
+                f"3. Workflow status is set to 'Running' (not Draft)\n"
+                f"4. You have access to this workflow"
+            )
+        if "INVALID_API_KEY" in error_msg:
+            raise RuntimeError("Invalid API key. Please check your RH_Config node.")
+        if "INSUFFICIENT_BALANCE" in error_msg:
+            raise RuntimeError("Insufficient balance. Please top up your RunningHub account.")
+        raise RuntimeError(f"RunningHub task creation failed: {error_msg}")
+
+    def cancel_task(self, task_id: str, timeout: int = 20) -> bool:
+        """Request cancellation of a task through the legacy control endpoint."""
+        response = self.session.post(
+            f"{self.base_url}/task/openapi/cancel",
+            json={"taskId": task_id, "apiKey": self.api_key},
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        result = response.json()
+        if result.get("code") == 0:
+            return True
+        raise RuntimeError(
+            f"RunningHub task cancellation failed: {result.get('msg', 'Unknown error')}"
+        )
 
     def query_task_legacy(self, task_id: str) -> RHQueryResult:
         url = f"{self.base_url}/task/openapi/outputs"

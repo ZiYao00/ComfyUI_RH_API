@@ -136,6 +136,32 @@ class RHClientTests(unittest.TestCase):
         self.assertEqual(kwargs["headers"]["Authorization"], "Bearer key")
         self.assertIn("file", kwargs["files"])
 
+    def test_create_task_preserves_legacy_json_body(self):
+        session = RecordingSession({"code": 0, "data": {"taskId": "task-123"}})
+        client = self.module.RHClient("key", "https://rh.example", session=session)
+
+        task_id = client.create_task(
+            workflow_or_app_id="workflow-1",
+            params=[{"nodeId": "1", "fieldName": "text", "fieldValue": "hello"}],
+            use_high_performance=True,
+        )
+
+        self.assertEqual(task_id, "task-123")
+        url, kwargs = session.calls[0]
+        self.assertTrue(url.endswith("/task/openapi/create"))
+        self.assertIn('"workflowId": "workflow-1"', kwargs["data"])
+        self.assertIn('"instanceType": "plus"', kwargs["data"])
+        self.assertEqual(kwargs["headers"]["Content-Type"], "application/json")
+
+    def test_cancel_task_is_centralized_in_client(self):
+        session = RecordingSession({"code": 0, "msg": "success", "data": None})
+        client = self.module.RHClient("key", "https://rh.example", session=session)
+
+        self.assertTrue(client.cancel_task("task-1"))
+        url, kwargs = session.calls[0]
+        self.assertTrue(url.endswith("/task/openapi/cancel"))
+        self.assertEqual(kwargs["json"], {"taskId": "task-1", "apiKey": "key"})
+
     def test_default_query_mode_remains_legacy(self):
         session = RecordingSession({"code": 0, "msg": "success", "data": []})
         client = self.module.RHClient("key", "https://rh.example", session=session)

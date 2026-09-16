@@ -637,25 +637,9 @@ def get_task_status(config, task_id):
     return _check_task_status(task_id, api_key, base_url, query_api=query_api)
 
 def cancel_task(config, task_id):
-    """
-    Requests to cancel a task on RunningHub.
-    """
-    api_key = config["api_key"]
-    base_url = config["base_url"]
-    url = f"{base_url}/task/openapi/cancel"
-    payload = {
-        "taskId": task_id,
-        "apiKey": api_key
-    }
+    """Request task cancellation through the shared RH client."""
     try:
-        response = requests.post(url, json=payload, timeout=20)
-        response.raise_for_status()
-        result = response.json()
-        if result.get("code") == 0:
-            return True
-        else:
-            print(f"API Error when cancelling task: {result.get('msg', 'Unknown error')}")
-            return False
+        return RHClient(config["api_key"], config["base_url"]).cancel_task(task_id)
     except Exception as e:
         print(f"Exception when cancelling task: {e}")
         return False

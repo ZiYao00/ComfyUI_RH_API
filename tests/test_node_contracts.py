@@ -19,7 +19,7 @@ def load_standalone_module(name, path):
 def load_rh_execute_module():
     package_name = "rh_test_pkg"
     package = types.ModuleType(package_name)
-    package.__path__ = []
+    package.__path__ = [str(ROOT / "nodes")]
     sys.modules[package_name] = package
 
     rh_utils = types.ModuleType(f"{package_name}.rh_utils")

@@ -3,22 +3,15 @@ RH_Execute Node - Execute RunningHub workflows and AI apps
 Simplified execution with automatic progress tracking and output handling
 """
 
-import requests
-import time
-import json
-
 # Import shared logic from rh_utils
 from .rh_utils import _monitor_task, _get_outputs, _create_placeholder_image, _create_placeholder_latent
+from .rh_client import RHClient, RHTaskSubmissionUncertainError
 
 try:
     import comfy.utils
     COMFY_AVAILABLE = True
 except ImportError:
     COMFY_AVAILABLE = False
-
-
-class RHTaskSubmissionUncertainError(RuntimeError):
-    """The create-task request may have reached RH, so automatic retry is unsafe."""
 
 
 class RH_Execute:
@@ -136,87 +129,16 @@ class RH_Execute:
                 raise ValueError(f"Missing required config field: {field}")
 
     def _create_task(self, config, params, use_high_performance):
-        """Create task on RunningHub"""
-        api_key = config["api_key"]
-        base_url = config["base_url"]
-        workflow_or_app_id = config["workflow_or_app_id"]
-        is_ai_app = config.get("is_ai_app", False)
-
-        # Choose endpoint based on task type
-        if is_ai_app:
-            url = f"{base_url}/task/openapi/ai-app/run"
-            payload = {
-                "webappId": int(workflow_or_app_id),
-                "apiKey": api_key,
-                "nodeInfoList": params,
-            }
-        else:
-            url = f"{base_url}/task/openapi/create"
-            payload = {
-                "workflowId": workflow_or_app_id,
-                "apiKey": api_key,
-                "nodeInfoList": params,
-            }
-
-        # Add instance type if high performance requested
-        if use_high_performance:
-            payload["instanceType"] = "plus"
-
-
-        # Creating a paid cloud task is intentionally single-attempt. If a POST
-        # reaches RH but the response is lost, retrying can create and charge a
-        # duplicate task. Ambiguous transport failures therefore require the user
-        # to check the RH task list before retrying manually.
+        """Create task through the shared RH client safety boundary."""
         print("Creating task (single safe attempt)...")
-        headers = {'Content-Type': 'application/json'}
-        try:
-            response = requests.post(url, data=json.dumps(payload), headers=headers, timeout=30)
-            response.raise_for_status()
-        except requests.exceptions.RequestException as e:
-            raise RHTaskSubmissionUncertainError(
-                "RunningHub task submission status is uncertain because the HTTP request failed after submission may have started. "
-                "Do not auto-retry. Check the RunningHub task list before retrying manually. "
-                f"Transport error: {e}"
-            ) from e
-
-        try:
-            result = response.json()
-        except Exception as e:
-            raise RHTaskSubmissionUncertainError(
-                "RunningHub returned an unreadable create-task response. The task may already exist. "
-                "Check the RunningHub task list before retrying manually."
-            ) from e
-
-        if result.get("code") == 0:
-            data = result.get("data", {})
-            task_id = data.get("taskId")
-            if not task_id:
-                raise RHTaskSubmissionUncertainError(
-                    "RunningHub reported create-task success but returned no taskId. "
-                    "The task may already exist; check the RunningHub task list before retrying."
-                )
-
-            print("ℹ Using HTTP polling for task monitoring (WebSocket disabled for stability)")
-            return task_id
-
-        error_msg = str(result.get('msg', 'Unknown error'))
-        print(f"❌ RunningHub rejected task creation: {error_msg}")
-
-        if "WORKFLOW_NOT_SAVED_OR_NOT_RUNNING" in error_msg:
-            raise Exception(
-                f"Workflow error: {error_msg}\n"
-                f"Please check:\n"
-                f"1. Workflow ID '{workflow_or_app_id}' exists on RunningHub\n"
-                f"2. Workflow is saved\n"
-                f"3. Workflow status is set to 'Running' (not Draft)\n"
-                f"4. You have access to this workflow"
-            )
-        if "INVALID_API_KEY" in error_msg:
-            raise Exception("Invalid API key. Please check your RH_Config node.")
-        if "INSUFFICIENT_BALANCE" in error_msg:
-            raise Exception("Insufficient balance. Please top up your RunningHub account.")
-
-        raise Exception(f"RunningHub task creation failed: {error_msg}")
+        task_id = RHClient(config["api_key"], config["base_url"]).create_task(
+            workflow_or_app_id=config["workflow_or_app_id"],
+            params=params,
+            is_ai_app=config.get("is_ai_app", False),
+            use_high_performance=use_high_performance,
+        )
+        print("ℹ Using HTTP polling for task monitoring (WebSocket disabled for stability)")
+        return task_id
 
 
 

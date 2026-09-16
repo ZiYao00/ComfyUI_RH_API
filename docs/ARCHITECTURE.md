@@ -197,7 +197,19 @@ Current real-world validation status (2026-09-16):
 
 Also verify Chinese UTF-8 text, multiple outputs, no-output tasks, and a deliberate conversion/download failure path when practical.
 
-## 12. Version-control policy for this maintenance branch
+## 12. Deferred follow-up backlog
+
+The current maintenance cycle is intentionally closed without forcing tests that the present environment cannot run. The following items are deferred rather than treated as release blockers:
+
+- **Real VIDEO regression:** pending until an environment capable of running the RH video workflow is available. After that test, decide whether legacy `video_frames` should support `all_frames`, `preview_only`, or `disabled` modes to reduce memory pressure.
+- **V2 upload A/B:** the V2 media-upload adapter exists, but Legacy remains the default until image/audio/video uploads are compared against the same real RH workflows.
+- **Result Manifest / `RH_RESULT_BUNDLE`:** add a structured result bundle when multi-file/multi-type workflows justify a new public node contract.
+- **Workflow Inspector:** use RH workflow metadata to reduce manual `node_id` / `field_name` entry only after the core connector remains stable in normal use.
+- **Diagnostics surface:** add a compact task/output diagnostic report if future failures show that console logs are insufficient.
+
+Task creation (including batch submission), result queries/uploads, and task cancellation should continue to converge on `RHClient` rather than introducing new direct HTTP calls in node implementations.
+
+## 13. Version-control policy for this maintenance branch
 
 During local stabilization of the upstream plugin:
 

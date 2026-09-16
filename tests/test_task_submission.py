@@ -28,8 +28,10 @@ def make_requests_stub():
 def load_rh_execute(requests_module):
     sys.modules["requests"] = requests_module
     package_name = "rh_execute_submission_test_pkg"
+    sys.modules.pop(f"{package_name}.rh_client", None)
+    sys.modules.pop(f"{package_name}.rh_execute", None)
     package = types.ModuleType(package_name)
-    package.__path__ = []
+    package.__path__ = [str(ROOT / "nodes")]
     sys.modules[package_name] = package
 
     rh_utils = types.ModuleType(f"{package_name}.rh_utils")

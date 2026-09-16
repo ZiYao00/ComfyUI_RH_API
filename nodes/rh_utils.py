@@ -234,7 +234,7 @@ def _get_outputs(task_id, config, save_to_local, output_prefix):
         status = _check_task_status(task_id, api_key, base_url)
 
         if isinstance(status, list):
-            return _process_outputs(status, save_to_local, output_prefix)
+            return _process_outputs(status, save_to_local, output_prefix, task_id=task_id)
 
         if isinstance(status, dict):
             task_status = status.get("taskStatus")
@@ -286,81 +286,140 @@ def _download_and_process_file(output):
         print(f"Warning: Failed to download or process {file_type} file from {file_url}: {e}")
     return None
 
-def _process_outputs(outputs, save_to_local, output_prefix):
-    """Process task outputs into ComfyUI format using parallel downloads."""
-    if not outputs:
-        outputs = []
-    print(f"Processing {len(outputs)} output files in parallel...")
+def _process_outputs(outputs, save_to_local, output_prefix, task_id=None):
+    """Preserve RH files first, then adapt them to ComfyUI output types."""
+    import tempfile
+    from .rh_outputs import download_output_item, normalize_outputs
+    from . import rh_media
 
-    # --- Parallel Download Step ---
-    results = []
-    with ThreadPoolExecutor(max_workers=min(10, len(outputs) or 1)) as executor:
-        future_to_output = {executor.submit(_download_and_process_file, o): o for o in outputs}
-        for future in as_completed(future_to_output):
+    items = normalize_outputs(outputs or [])
+    print(f"Processing {len(items)} RunningHub output files...")
+
+    try:
+        import folder_paths
+        if save_to_local:
+            working_dir = folder_paths.get_output_directory()
+        else:
+            get_temp_directory = getattr(folder_paths, "get_temp_directory", None)
+            working_dir = get_temp_directory() if callable(get_temp_directory) else tempfile.gettempdir()
+    except ImportError:
+        working_dir = os.path.join(os.getcwd(), "output") if save_to_local else tempfile.gettempdir()
+
+    os.makedirs(working_dir, exist_ok=True)
+    if save_to_local:
+        print(f"✓ Preserving original RH outputs in: {working_dir}")
+    else:
+        print(f"ℹ Staging RH outputs in temporary storage: {working_dir}")
+
+    # Download in parallel, but restore the original RH result order by item.index.
+    downloaded_by_index = {}
+    download_errors = []
+    with ThreadPoolExecutor(max_workers=min(10, len(items) or 1)) as executor:
+        future_to_item = {
+            executor.submit(
+                download_output_item,
+                item,
+                working_dir,
+                output_prefix,
+                task_id,
+            ): item
+            for item in items
+        }
+        for future in as_completed(future_to_item):
+            item = future_to_item[future]
             try:
-                result = future.result()
-                if result:
-                    results.append(result)
+                downloaded = future.result()
+                downloaded_by_index[downloaded.index] = downloaded
+                print(
+                    f"✓ Preserved RH output #{downloaded.index + 1}: "
+                    f"{os.path.basename(downloaded.local_path)} "
+                    f"[{downloaded.media_type}]"
+                )
             except Exception as e:
-                print(f"An exception occurred during file processing: {e}")
+                download_errors.append((item, e))
+                print(f"❌ Failed to preserve RH output #{item.index + 1} from {item.url}: {e}")
 
-    # --- Sequential Processing and Saving Step ---
+    if download_errors:
+        details = "; ".join(
+            f"#{item.index + 1} {item.url}: {error}" for item, error in download_errors
+        )
+        raise RuntimeError(f"Failed to download {len(download_errors)} RunningHub output file(s): {details}")
+
+    downloaded_items = [downloaded_by_index[index] for index in sorted(downloaded_by_index)]
+
     images, video_frames = [], []
     text_content, audio_data, video_data, latent_data = None, None, None, None
-    image_counter, video_counter = 0, 0
-    output_dir = None
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    present_types = {item.media_type for item in downloaded_items if item.media_type != "unknown"}
+    successful_types = set()
+    conversion_errors = []
 
-    if save_to_local:
+    for item in downloaded_items:
         try:
-            import folder_paths
-            output_dir = folder_paths.get_output_directory()
-        except ImportError:
-            output_dir = os.path.join(os.getcwd(), "output")
-        os.makedirs(output_dir, exist_ok=True)
-        print(f"✓ Saving outputs to: {output_dir}")
+            if item.media_type == "image":
+                images.append(rh_media.load_image(item.local_path))
+                successful_types.add("image")
+            elif item.media_type == "text":
+                if text_content is None:
+                    text_content = rh_media.load_text(item.local_path)
+                    successful_types.add("text")
+            elif item.media_type == "audio":
+                if audio_data is None:
+                    audio_data = rh_media.load_audio(item.local_path)
+                    successful_types.add("audio")
+            elif item.media_type == "video":
+                if video_data is None:
+                    video_data = rh_media.load_video(item.local_path)
+                    successful_types.add("video")
+                if not video_frames:
+                    video_frames.extend(rh_media.extract_video_frames(item.local_path))
+            elif item.media_type == "latent":
+                if latent_data is None:
+                    latent_data = rh_media.load_latent(item.local_path)
+                    successful_types.add("latent")
+            else:
+                print(
+                    f"⚠ RH output #{item.index + 1} has an unknown media type; "
+                    f"the original file was preserved at {item.local_path}"
+                )
+        except Exception as e:
+            conversion_errors.append((item, e))
+            print(
+                f"❌ Failed to convert preserved RH output #{item.index + 1} "
+                f"({item.media_type}) for ComfyUI: {e}"
+            )
 
-    for res in sorted(results, key=lambda r: r.get('type')):
-        res_type = res.get("type")
-        if res_type == "image":
-            images.append(res["data"])
-            if save_to_local and output_dir:
-                image_counter += 1
-                filename = f"{output_prefix}_{timestamp}_{image_counter:03d}.{res['original_type']}"
-                _save_image_to_file(res["data"], os.path.join(output_dir, filename))
-                print(f"✓ Saved image: {filename}")
-        elif res_type == "video":
-            if res.get("frames") and not video_frames:
-                video_frames.extend(res["frames"])
-            if save_to_local and output_dir:
-                video_counter += 1
-                filename = f"{output_prefix}_{timestamp}_video_{video_counter:03d}.{res['original_type']}"
-                _download_and_save_video(res["url"], os.path.join(output_dir, filename))
-                print(f"✓ Saved video: {filename}")
-        elif res_type == "text" and not text_content:
-            text_content = res["data"]
-            if save_to_local and output_dir:
-                filename = f"{output_prefix}_{timestamp}_text.txt"
-                with open(os.path.join(output_dir, filename), 'w', encoding='utf-8') as f:
-                    f.write(text_content)
-                print(f"✓ Saved text: {filename}")
-        elif res_type == "audio" and not audio_data:
-            audio_data = res["data"]
-            if save_to_local and output_dir and audio_data:
-                filename = f"{output_prefix}_{timestamp}_audio.wav" # Default to wav for saving
-                _save_audio_to_file(audio_data, os.path.join(output_dir, filename))
-                print(f"✓ Saved audio: {filename}")
-        elif res_type == "latent" and not latent_data:
-            latent_data = res["data"]
+    failed_required_types = sorted(present_types - successful_types)
+    if failed_required_types:
+        details = "; ".join(
+            f"#{item.index + 1} {item.media_type}: {error}"
+            for item, error in conversion_errors
+            if item.media_type in failed_required_types
+        )
+        raise RuntimeError(
+            "RunningHub files were preserved locally, but ComfyUI conversion failed for "
+            f"{', '.join(failed_required_types)}. {details}"
+        )
 
-    # --- Final Aggregation Step ---
-    if not images: images.append(_create_placeholder_image("No images"))
-    if not video_frames: video_frames.append(_create_placeholder_image("No video frames"))
-    if not text_content: text_content = ""
-    if not audio_data: audio_data = _create_placeholder_audio()
-    if not latent_data: latent_data = _create_placeholder_latent()
+    if not images:
+        images.append(_create_placeholder_image("No images"))
+    if not video_frames:
+        video_frames.append(_create_placeholder_image("No video frames"))
+    if text_content is None:
+        text_content = ""
+    if latent_data is None:
+        latent_data = _create_placeholder_latent()
 
-    return (torch.cat(images, dim=0), torch.cat(video_frames, dim=0), text_content, audio_data, video_data, latent_data)
+    # AUDIO and VIDEO intentionally remain None when the RH task did not produce
+    # those media types. A conversion failure raises above instead of fabricating
+    # placeholder media that looks like a successful result.
+    return (
+        torch.cat(images, dim=0),
+        torch.cat(video_frames, dim=0),
+        text_content,
+        audio_data,
+        video_data,
+        latent_data,
+    )
 
 
 def _download_image(url):

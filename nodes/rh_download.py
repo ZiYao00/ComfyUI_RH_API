@@ -4,7 +4,7 @@ RH_Download Node - Download results from a RunningHub task
 
 import torch
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from .rh_utils import _monitor_task, _get_outputs, _create_placeholder_image, _create_placeholder_latent, _create_placeholder_audio
+from .rh_utils import _monitor_task, _get_outputs, _create_placeholder_image, _create_placeholder_latent
 
 class RH_Download:
     """
@@ -65,7 +65,7 @@ class RH_Download:
                 _create_placeholder_image(f"Failed: {task_id}"),
                 _create_placeholder_image("Failed"),
                 f"ERROR: {e}",
-                _create_placeholder_audio(),
+                None,
                 None,
                 _create_placeholder_latent()
             )
@@ -109,7 +109,7 @@ class RH_Download:
                             _create_placeholder_image(f"Failed: {task_ids[index]}"),
                             _create_placeholder_image("Failed"),
                             f"ERROR: {e}",
-                            _create_placeholder_audio(),
+                            None,
                             None,
                             _create_placeholder_latent()
                         )
@@ -120,7 +120,7 @@ class RH_Download:
         final_images = torch.cat([res[0] for res in all_results], dim=0)
         final_video_frames = torch.cat([res[1] for res in all_results], dim=0)
         final_text = "\n".join([res[2] for res in all_results])
-        first_audio = next((res[3] for res in all_results if res[3] is not None), _create_placeholder_audio())
+        first_audio = next((res[3] for res in all_results if res[3] is not None), None)
         first_video = next((res[4] for res in all_results if res[4] is not None), None)
         final_latents = {key: torch.cat([res[5][key] for res in all_results], dim=0) for key in all_results[0][5].keys()}
 

@@ -5,6 +5,54 @@ export const NATIVE_VERSION = 2;
 const scalarText = (value) => value == null ? "" : String(value);
 const slotOf = (name) => Number(String(name).match(/_(\d+)$/)?.[1] || 0);
 
+export function isLegacyExecute(node) {
+    if (node.type === "RH_Execute2") return true;
+    if (node.type !== "RH_Execute") return false;
+    return (node.inputs || []).some((input) => input.name === "params" || input.name.startsWith("extra_params."));
+}
+
+function newExecuteInputName(nodeType, name) {
+    if (name === "params") return "params.params";
+    if (nodeType === "RH_Execute") {
+        const match = /^extra_params\.params_(\d+)$/.exec(name);
+        if (!match) {
+            if (name.startsWith("extra_params.")) throw new Error("RH Execute migration stopped: unsupported input " + name + ".");
+            return name;
+        }
+        const oldIndex = Number(match[1]);
+        if (oldIndex < 2 || oldIndex > 16) throw new Error("RH Execute migration stopped: unsupported params index " + oldIndex + ".");
+        return `params.params_${oldIndex - 1}`;
+    }
+    if (nodeType === "RH_Execute2") {
+        const match = /^params_(\d+)$/.exec(name);
+        if (!match) return name;
+        const oldIndex = Number(match[1]);
+        if (oldIndex < 2 || oldIndex > 16) throw new Error("RH Execute 2 migration stopped: unsupported params index " + oldIndex + ".");
+        return `params.params_${oldIndex - 1}`;
+    }
+    return name;
+}
+
+export function migrateExecuteNode(node) {
+    if (!isLegacyExecute(node)) return false;
+    const sourceType = node.type;
+    const mapped = new Set();
+    const planned = (node.inputs || []).map((input) => {
+        const name = newExecuteInputName(sourceType, input.name);
+        if (mapped.has(name)) throw new Error("RH Execute migration stopped: conflicting input " + name + ".");
+        mapped.add(name);
+        return { input, name };
+    });
+    for (const { input, name } of planned) {
+        input.name = name;
+        const displayName = name.split(".").at(-1);
+        if (input.label && /^params(?:[ _]\d+)?$/.test(input.label)) input.label = displayName;
+        if (input.localized_name && /^params(?:[ _]\d+)?$/.test(input.localized_name)) input.localized_name = displayName;
+    }
+    node.type = "RH_Execute";
+    return true;
+}
+
 export function isLegacyGroup(node) {
     const group = GROUPS[node.type];
     if (!group) return false;
@@ -153,9 +201,12 @@ export function migrateGraph(graphData, createNode) {
     // ComfyUI 1.53 constructs subgraph definitions before this extension hook.
     // Do not partially migrate an already-instantiated legacy definition.
     for (const subgraph of staged.definitions?.subgraphs || []) {
-        if ((subgraph.nodes || []).some(isLegacyGroup)) {
-            throw new Error("RH migration stopped: this workflow contains a legacy RH group inside a subgraph. Migrate an expanded copy first; the original workflow is unchanged.");
+        if ((subgraph.nodes || []).some((node) => isLegacyGroup(node) || isLegacyExecute(node))) {
+            throw new Error("RH migration stopped: this workflow contains a legacy RH node inside a subgraph. Migrate an expanded copy first; the original workflow is unchanged.");
         }
+    }
+    for (const old of staged.nodes || []) {
+        if (migrateExecuteNode(old)) migrated++;
     }
     for (const old of staged.nodes || []) {
         if (!isLegacyGroup(old)) continue;

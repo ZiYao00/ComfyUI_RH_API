@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { readLegacyRows, newInputName, isLegacyGroup, migrateGraph } from '../js/rh_native_migration.js';
+import { readLegacyRows, newInputName, isLegacyGroup, isLegacyExecute, migrateExecuteNode, migrateGraph } from '../js/rh_native_migration.js';
 
 const legacy = (values, inputs = []) => ({ type: 'RH_Params2', widgets_values: values, inputs });
 
@@ -97,10 +97,34 @@ test('input mappings preserve the single effective value and custom field path',
     assert.equal(newInputName('custom_field_name_2', 'param_count'), 'param_count.field_name_2.custom_field_name_2');
     assert.equal(newInputName('previous_params', 'param_count'), 'previous_params');
 });
+test('execute input names migrate to the zero-based Autogrow chain', () => {
+    const previousV2 = { type: 'RH_Execute', inputs: [
+        { name: 'config' }, { name: 'params', localized_name: 'params', link: 1 },
+        { name: 'extra_params.params_2', localized_name: 'params_2', link: 2 },
+        { name: 'extra_params.params_3', localized_name: 'params_3', link: null },
+    ] };
+    assert.equal(isLegacyExecute(previousV2), true);
+    assert.equal(migrateExecuteNode(previousV2), true);
+    assert.equal(previousV2.type, 'RH_Execute');
+    assert.deepEqual(previousV2.inputs.map(x => x.name), ['config', 'params.params', 'params.params_1', 'params.params_2']);
+    assert.deepEqual(previousV2.inputs.slice(1).map(x => x.localized_name), ['params', 'params_1', 'params_2']);
+
+    const execute2 = { type: 'RH_Execute2', inputs: [
+        { name: 'config' }, { name: 'params', link: 1 }, { name: 'params_2', link: 2 }, { name: 'params_3', link: null },
+    ] };
+    assert.equal(migrateExecuteNode(execute2), true);
+    assert.equal(execute2.type, 'RH_Execute');
+    assert.deepEqual(execute2.inputs.map(x => x.name), ['config', 'params.params', 'params.params_1', 'params.params_2']);
+});
+test('execute migration rejects indexes beyond the 16-source native limit', () => {
+    const node = { type: 'RH_Execute2', inputs: [{ name: 'params' }, { name: 'params_17' }] };
+    assert.throws(() => migrateExecuteNode(node), /unsupported params index 17/);
+});
 test('new workflows are not migrated twice', () => {
     assert.equal(isLegacyGroup({ type: 'RH_Params2', properties: { rh_native_ui_version: 2 } }), false);
     assert.equal(isLegacyGroup({ type: 'RH_Params2', properties: { rh_native_ui_version: 1 }, widgets_values: ['1'], inputs: [{ name: 'param_count.value_1' }] }), false);
     assert.equal(isLegacyGroup({ type: 'RH_UploadImage2', properties: { rh_native_ui_version: 2 } }), false);
+    assert.equal(isLegacyExecute({ type: 'RH_Execute', inputs: [{ name: 'params.params' }, { name: 'params.params_1' }] }), false);
 });
 test('migration failure leaves original workflow untouched', () => {
     const graph = { nodes: [legacy([{ node_id: '1', slot_id: 99 }])], links: [] };
@@ -113,9 +137,14 @@ test('legacy subgraphs require explicit migration instead of silently losing dat
     const before = structuredClone(graph);
     assert.throws(() => migrateGraph(graph, () => null), /subgraph/);
     assert.deepEqual(graph, before);
+
+    const executeGraph = { nodes: [], links: [], definitions: { subgraphs: [{ id: 'sub', nodes: [{ type: 'RH_Execute', inputs: [{ name: 'params' }] }] }] } };
+    const executeBefore = structuredClone(executeGraph);
+    assert.throws(() => migrateGraph(executeGraph, () => null), /subgraph/);
+    assert.deepEqual(executeGraph, executeBefore);
 });
 test('new frontend does not rebuild controls or replace prototype.configure', async () => {
-    for (const filename of ['rh_params2.js', 'rh_upload_image2.js', 'rh_native_ui.js', 'rh_native_groups.js']) {
+    for (const filename of ['rh_params2.js', 'rh_upload_image2.js', 'rh_execute2.js', 'rh_native_ui.js', 'rh_native_groups.js']) {
         const source = await readFile(new URL('../js/' + filename, import.meta.url), 'utf8');
         assert.doesNotMatch(source, /addDOMWidget\s*\(|\.addInput\s*\(|prototype\.configure\s*=/);
     }

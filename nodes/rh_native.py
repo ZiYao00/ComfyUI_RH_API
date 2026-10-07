@@ -154,7 +154,7 @@ class RH_UploadImage2Native(io.ComfyNode):
 
 
 def execute_schema(node_id: str, title: str, *, deprecated: bool = False):
-    extra_names = [f"params_{index}" for index in range(2, 17)]
+    param_names = ["params", *[f"params_{index}" for index in range(1, 16)]]
     return io.Schema(
         node_id=node_id,
         display_name=title,
@@ -164,18 +164,16 @@ def execute_schema(node_id: str, title: str, *, deprecated: bool = False):
             Config.Input("config", tooltip="RunningHub configuration from RH Config."),
             io.Int.Input("timeout", display_name="Timeout", default=600, min=60, max=3600,
                          tooltip="Maximum time to wait for task completion in seconds."),
-            Params.Input("params", display_name="params", optional=True,
-                         tooltip="Primary RH_PARAMS source."),
             io.Autogrow.Input(
-                "extra_params",
+                "params",
                 template=io.Autogrow.TemplateNames(
-                    Params.Input("params_2", display_name="params 2"),
-                    names=extra_names,
+                    Params.Input("source"),
+                    names=param_names,
                     min=0,
                 ),
-                display_name="Additional Params",
+                display_name="Params",
                 optional=True,
-                tooltip="Connect additional RH_PARAMS sources; later sources override duplicate node/field pairs.",
+                tooltip="Connect RH_PARAMS sources in order; a new input appears only after the current trailing input is connected.",
             ),
             io.Boolean.Input("use_high_performance", display_name="High Performance", default=False,
                              tooltip="Use the high-performance RunningHub instance when supported."),
@@ -204,17 +202,24 @@ class RH_ExecuteNative(io.ComfyNode):
         return execute_schema("RH_Execute", "\u25b6\ufe0f RH Execute")
 
     @classmethod
-    def execute(cls, config, timeout=600, params=None, extra_params=None,
+    def execute(cls, config, timeout=600, params=None,
                 use_high_performance=False, save_to_local=False, output_prefix="RH"):
-        dynamic = dict(extra_params or {})
+        if params is None:
+            sources = {}
+        elif isinstance(params, dict):
+            sources = dict(params)
+        else:
+            # Direct/internal callers may still pass the legacy primary list.
+            sources = {"params": params}
+        primary = sources.pop("params", None)
         result = ExecuteService().execute(
             config=config,
-            params=params,
+            params=primary,
             timeout=timeout,
             use_high_performance=use_high_performance,
             save_to_local=save_to_local,
             output_prefix=output_prefix,
-            **dynamic,
+            **sources,
         )
         return io.NodeOutput(*result)
 

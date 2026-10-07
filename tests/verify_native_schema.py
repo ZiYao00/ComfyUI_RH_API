@@ -68,24 +68,27 @@ def main():
                 required = option["inputs"]["required"]
                 self.assertFalse(any(name.startswith("enabled_") for name in required))
 
-        def test_execute_uses_native_autogrow_and_keeps_fixed_controls_native(self):
+        def test_execute_uses_one_native_autogrow_chain(self):
             execute = definitions["RH_Execute"]["input"]
-            self.assertEqual(execute["optional"]["extra_params"][0], "COMFY_AUTOGROW_V3")
-            names = execute["optional"]["extra_params"][1]["template"]["names"]
-            self.assertEqual(names[0], "params_2")
-            self.assertEqual(names[-1], "params_16")
+            self.assertEqual(execute["optional"]["params"][0], "COMFY_AUTOGROW_V3")
+            names = execute["optional"]["params"][1]["template"]["names"]
+            self.assertEqual(names[0], "params")
+            self.assertEqual(names[1], "params_1")
+            self.assertEqual(names[-1], "params_15")
+            self.assertEqual(len(names), 16)
+            self.assertNotIn("extra_params", execute["optional"])
             for name in ("timeout", "use_high_performance", "save_to_local", "output_prefix"):
                 self.assertIn(name, execute["required"])
 
-        def test_execute_native_delegates_to_v2_merge_behavior(self):
+        def test_execute_native_delegates_zero_based_autogrow_sources(self):
             base = [{"nodeId": "1", "fieldName": "text", "fieldValue": "base"}]
             extra = [{"nodeId": "1", "fieldName": "text", "fieldValue": "override"}]
             fake = (object(), object(), "", None, None, {"samples": object()}, "task")
             with patch.object(native.ExecuteService, "execute", return_value=fake) as execute:
-                result = native.RH_ExecuteNative.execute({}, params=base, extra_params={"params_2": extra})
+                result = native.RH_ExecuteNative.execute({}, params={"params": base, "params_1": extra})
                 self.assertEqual(result.result[-1], "task")
                 self.assertEqual(execute.call_args.kwargs["params"], base)
-                self.assertEqual(execute.call_args.kwargs["params_2"], extra)
+                self.assertEqual(execute.call_args.kwargs["params_1"], extra)
                 self.assertFalse(execute.call_args.kwargs["save_to_local"])
 
         def test_audio_still_accepts_a_path_video_still_accepts_video(self):
@@ -165,15 +168,16 @@ def main():
             base = [{"nodeId": "1", "fieldName": "text", "fieldValue": "base"}]
             extra = [{"nodeId": "2", "fieldName": "seed", "fieldValue": "7"}]
             flat = {
-                "config": {"api_key": "test-only"}, "timeout": 600, "params": base,
-                "extra_params.params_2": extra, "use_high_performance": False,
+                "config": {"api_key": "test-only"}, "timeout": 600, "params.params": base,
+                "params.params_1": extra, "use_high_performance": False,
                 "save_to_local": False, "output_prefix": "RH",
             }
             finalized, _, v3_data = _io.get_finalized_class_inputs(native.RH_ExecuteNative.INPUT_TYPES(), flat)
-            self.assertIn("extra_params.params_2", finalized["optional"])
+            self.assertIn("params.params", finalized["optional"])
+            self.assertIn("params.params_1", finalized["optional"])
             nested = _io.build_nested_inputs(flat, v3_data)
-            self.assertEqual(nested["params"], base)
-            self.assertEqual(nested["extra_params"]["params_2"], extra)
+            self.assertEqual(nested["params"]["params"], base)
+            self.assertEqual(nested["params"]["params_1"], extra)
 
         def test_real_backend_expands_image_group_and_omitted_optional_image(self):
             from comfy_api.latest import _io

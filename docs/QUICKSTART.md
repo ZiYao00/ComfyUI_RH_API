@@ -1,6 +1,6 @@
 # Quick Start Guide
 
-> Native UI update (2026-10-07): `RH Execute`, `RH Params V2`, and all eight registered upload nodes now use the current V3 schema path. `RH Execute` incorporates the former Execute 2 multi-params behavior; `RH Execute 2` remains deprecated only for old workflow compatibility. Tested with ComfyUI 0.39.0 / frontend 1.53.10. Save an original workflow copy, restart the backend, then refresh with Ctrl+F5. See [原生输入使用说明、迁移边界与验证记录](NATIVE_UI.md). This update does not install or upgrade runtime dependencies.
+> Native UI update (2026-10-07): `RH Execute`, `RH Params V2`, and all eight registered upload nodes now use the current V3 schema path. `RH Execute` incorporates the former Execute 2 multi-params behavior through one native Autogrow chain; saved `RH Execute 2` graph nodes migrate to `RH Execute`, while the deprecated Python class remains only for compatibility outside graph migration. Tested with ComfyUI 0.39.0 / frontend 1.53.10. Save an original workflow copy, restart the backend, then refresh with Ctrl+F5. See [原生输入使用说明、迁移边界与验证记录](NATIVE_UI.md). This update does not install or upgrade runtime dependencies.
 
 ## 1. Install
 
@@ -30,7 +30,7 @@ The optional `query_api` selector on `RH Config` defaults to `legacy`. Keep that
 
 Add `RH Execute`, connect `RH Config.config`, and queue the prompt.
 
-`RH Execute` waits for the RH task, preserves/stages the returned files, converts supported files to ComfyUI values, and returns the `task_id`. Its primary `params` input stays compatible with old workflows; connecting additional RH_PARAMS sources uses native Autogrow (`params_2`, `params_3`, ...). Later sources override duplicate node/field pairs, matching the former Execute 2 behavior.
+`RH Execute` waits for the RH task, preserves/stages the returned files, converts supported files to ComfyUI values, and returns the `task_id`. Its RH_PARAMS fan-in is one native Autogrow chain: by default only `params` is visible; connecting it reveals `params_1`, then `params_2`, and so on through `params_15` (16 sources total). Later sources override duplicate node/field pairs, matching the former Execute 2 behavior. Saved graph workflows from the old Execute layouts are migrated automatically; old API-format prompts should be re-exported from the migrated graph.
 
 ## 4. Override text parameters
 

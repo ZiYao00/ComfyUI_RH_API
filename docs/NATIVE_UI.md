@@ -12,6 +12,12 @@
 
 ## 2. 使用与界面规则
 
+### RH Execute
+
+`RH Execute` 的 RH_PARAMS fan-in 使用一套官方 V3 Autogrow，不再保留“固定 params + 另一组额外输入”的双层结构。默认只显示 `params`；连接后才出现 `params_1`，再连接才出现 `params_2`，依次到 `params_15`，总计最多 16 路。显示编号从主输入 `params` 视为第 0 路开始，因此不存在默认先出现 `params_2` 的跳号。
+
+后面的来源覆盖前面相同的 `nodeId + fieldName`，沿用原 Execute 2 的合并优先级。旧图工作流会在节点构造前迁移：旧 `RH Execute.params` 映射到新 Autogrow 首项；上一版 `extra_params.params_2` 与旧 `RH Execute 2.params_2` 都映射为新的 `params_1`，后续依次平移。迁移只重命名输入并保持 target slot 顺序，因此既有连线不需要重新布线。API-format prompt 不包含图迁移上下文，旧 prompt 需要从迁移后的图重新导出。
+
 ### RH Params V2
 
 每组只有一个正式 Value 输入：可以本地填写，也可以在同一个输入上连接 STRING、INT、FLOAT、BOOLEAN。连接方式和控件显示由 ComfyUI 原生前端管理，不再手工创建顶部 wildcard value_N 与下方 local_value_N 两套字段。不能向标量 Value 连接 IMAGE 等媒体对象。
@@ -41,7 +47,7 @@ RH_UploadMask 的源文件原本就存在，但包入口的导入和注册均被
 
 ## 3. 实现分层与接手约束
 
-`nodes/rh_native.py` 是 RH Execute、RH Params V2 与八个在用 Upload 节点的活动 V3 schema 入口；`__init__.py` 保持既有公开节点 ID，再将 `RH_Execute` 映射到新的 V3 实现。Upload 旧模块继续负责媒体编码和 RH HTTP；`rh_execute2.py` 作为共享的多 RH_PARAMS 合并/执行服务，同时保留 `RH_Execute2` 旧节点用于历史工作流兼容。RH HTTP 协议和付费提交策略没有切换。
+`nodes/rh_native.py` 是 RH Execute、RH Params V2 与八个在用 Upload 节点的活动 V3 schema 入口；`__init__.py` 保持既有公开节点 ID，再将 `RH_Execute` 映射到新的 V3 实现。Upload 旧模块继续负责媒体编码和 RH HTTP；`rh_execute2.py` 继续作为多 RH_PARAMS 合并/执行服务，并保留 Deprecated Python 节点以兼容非图调用。旧 `js/rh_execute2.js` 已退役为说明文件，图工作流中的 `RH_Execute2` 会在构造前迁移到 `RH_Execute`，不再运行手写 `addInput/prototype.configure`。RH HTTP 协议和付费提交策略没有切换。
 
 `js/rh_native_ui.js` 使用扩展生命周期钩子协调迁移与标签。`js/rh_native_groups.js` 为 Params V2 / Upload Image V2 的官方 DynamicCombo 补充同会话的值与连线恢复，并为两类分组插入 4 px 非交互 spacer；它不创建业务输入/接口，不替换 prototype.configure，也不把会话缓存伪装成持久化格式。`js/rh_native_migration.js` 只处理历史图工作流数据。
 
@@ -49,20 +55,20 @@ RH_UploadMask 的源文件原本就存在，但包入口的导入和注册均被
 
 已验证的生命周期事实：DynamicCombo 在切换 Count 时会拆除旧子控件，并由官方 `removedWidgetValues` 恢复重新出现的 widget 值；但被移除输入的图连线会由官方 `replaceNodeInputs` 断开。因此本扩展在拆除前按输入名缓存有效链接，重新增大 Count 后再连接回来。普通值编辑不应主动调用 computeSize/setSize。
 
-当前本机 ComfyUI 已公开提供 DynamicGroup，但本轮不为此重构现有分组：DynamicCombo、MultiType 与 Autogrow 已满足当前方案，继续保留经过验证的连接恢复与迁移逻辑。DynamicGroup 仅作为后续独立评估项，不与本轮稳定性修复绑定。显示名中的 V2 表示本项目第二代节点 UX，不等于 RunningHub HTTP V2 协议。
+当前实测的 ComfyUI 0.39.0 环境没有公开可用的 `io.DynamicGroup`；本轮不为此升级环境。DynamicCombo、MultiType 与 Autogrow 已满足当前方案，继续保留经过验证的连接恢复与迁移逻辑。显示名中的 V2 表示本项目第二代节点 UX，不等于 RunningHub HTTP V2 协议。
 
 ## 4. 历史工作流迁移边界
 
-支持此次项目已有的顶层图工作流格式：旧 Params 2 的数字数量加位置值数组、对象行/JSON 行、上一版带 Enable 的原生 Params，以及旧 Image 2 对象行/带 Enable 原生格式。迁移在副本上校验，用临时原生节点生成新控件序列化数据，再按输入名重映射连线；保留节点 ID、独立目标、自定义字段和稀疏槽位编号。Params V2 与 Upload Image V2 都已移除 Enable；旧工作流中若某个 disabled 行仍含数据或连线，会明确阻止迁移，不能静默把它激活。
+支持此次项目已有的顶层图工作流格式：旧 Params 2 的数字数量加位置值数组、对象行/JSON 行、上一版带 Enable 的原生 Params、旧 Image 2 对象行/带 Enable 原生格式，以及旧 `RH Execute` / 上一版 V2 Execute / `RH Execute 2` 的 fan-in 命名。Params/Image 迁移在副本上校验，用临时原生节点生成新控件序列化数据，再按输入名重映射连线；Execute 迁移只重命名相同顺序的输入并保持 target slot 不变。Params V2 与 Upload Image V2 都已移除 Enable；旧工作流中若某个 disabled 行仍含数据或连线，会明确阻止迁移，不能静默把它激活。
 
 外部 value_N 连线和本地 local_value_N 值迁移到同一个原生 Value。若两份历史输入都连接而产生冲突，不能默默选一个。异常编号、重复槽位、缺失或无法映射的连接需要明确阻止，而不是用默认空值继续。
 
 有两个限制必须明确：
 
-1. 旧 Params 2 / Image 2 位于子图定义内时，不在本轮自动迁移范围。当前前端会在迁移钩子前实例化子图，直接修改 JSON 不能保证活动子图同步。需保留原件，在展开的副本上处理。
-2. 旧实验节点的 API 格式 prompt 不包含完整图与迁移数据，不能直接套用新分组格式。应先打开并迁移原图，再重新导出 API prompt；固定输入 Upload 的平面 API 保持不变。
+1. 旧 Params 2 / Image 2 / Execute 动态输入位于子图定义内时，不在本轮自动迁移范围。当前前端会在迁移钩子前实例化子图，直接修改 JSON 不能保证活动子图同步。需保留原件，在展开的副本上处理。
+2. 旧 API 格式 prompt 不包含完整图与迁移数据，不能直接套用新的 DynamicCombo/Autogrow 键名。应先打开并迁移原图，再重新导出 API prompt；固定输入 Upload 的平面 API 保持不变。
 
-ComfyUI 会记录扩展钩子异常后继续加载，因此仅抛异常不是安全中止。发生迁移异常时，本扩展显示警告，将受影响的顶层组节点/子图入口保留为 `RH_MigrationRequired` 缺失节点占位，携带原类型、错误和历史数据，避免被当成正常空参数节点运行。原始磁盘文件不被修改。不要将警告状态另存覆盖唯一原件。
+ComfyUI 会记录扩展钩子异常后继续加载，因此仅抛异常不是安全中止。发生迁移异常时，本扩展显示警告，将受影响的顶层 RH 迁移节点/子图入口保留为 `RH_MigrationRequired` 缺失节点占位，携带原类型、错误和历史数据，避免被当成正常节点运行。原始磁盘文件不被修改。不要将警告状态另存覆盖唯一原件。
 
 ## 5. 已执行验证
 
@@ -70,8 +76,8 @@ ComfyUI 会记录扩展钩子异常后继续加载，因此仅抛异常不是安
 | --- | --- | --- |
 | 原有 Python 单元测试 | 54/54 通过 | HTTP 客户端、任务提交安全、输出处理、历史解析等；模拟请求 |
 | 当前真实 ComfyUI API/schema | 17/17 通过 | 十个 V3 类注册、Execute Autogrow、类型与输出契约、官方动态输入展开与 EXECUTE_NORMALIZED、上传参数传递；网络禁止/上传模拟 |
-| JavaScript 迁移单测 | 13/13 通过 | 旧格式、Params/Image 上一版 Enable 格式、位置值回退、稀疏编号、异常拒绝、事务性与子图边界 |
-| 实际安装前端的隔离浏览器 | 70/70 通过 | 精确显示名、Execute Autogrow/旧 Execute 兼容、Params/Image 无 Enable、4 px 非序列化分隔、Count 缩减无弹窗、同会话值与连线恢复、四种标量、Primitive/Reroute、保存重载、复制粘贴、撤销重做、迁移保护与主题切换 |
+| JavaScript 迁移单测 | 15/15 通过 | 旧格式、Params/Image 上一版 Enable、Execute/Execute2 fan-in 平移、超限拒绝、位置值回退、稀疏编号、事务性与子图边界 |
+| 实际安装前端的隔离浏览器 | 78/78 通过 | 精确显示名、Execute 单链 Autogrow（params→params_1→params_2）、旧 Execute/V2/Execute2 连线与可见标签迁移、Params/Image 无 Enable、4 px 非序列化分隔、Count 缩减无弹窗、同会话值与连线恢复、四种标量、Primitive/Reroute、保存重载、复制粘贴、撤销重做、迁移保护与主题切换 |
 
 浏览器使用已有 Edge、1920×1080 视口，直接从已安装的 `comfyui_frontend_package/static` 提供真实前端文件，再注入本项目 schema 与测试来源节点；不要求 8188 运行，也没有把测试节点注册到用户服务。所有写请求都在隔离服务器内阻断或 mock。没有使用真实 RH 凭据，没有提交付费任务。
 

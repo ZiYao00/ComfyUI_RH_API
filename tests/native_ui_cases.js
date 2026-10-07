@@ -33,15 +33,19 @@ check(execute.title === '▶️ RH Execute', 'V2 execution logic is exposed as R
 check(params.title === '⚙️ RH Params V2', 'Params node uses the RH Params V2 display name');
 check(images.title === '📤 RH Upload Image V2', 'Grouped image node uses the RH Upload Image V2 display name');
 check(nodes[3].title === '📤 RH Upload Image', 'Legacy single-image node keeps the RH Upload Image display name');
-check(execute.inputs.some(i => i.name === 'params'), 'RH Execute keeps the legacy primary params input');
-check(execute.inputs.some(i => i.name === 'extra_params.params_2'), 'RH Execute uses native Autogrow for additional params');
+check(execute.inputs.filter(i => i.name.startsWith('params.')).map(i => i.name).join(',') === 'params.params', 'RH Execute starts with only params');
+check(execute.inputs.find(i => i.name === 'params.params')?.localized_name === 'params', 'First RH Execute input is displayed as params');
 check(['timeout', 'use_high_performance', 'save_to_local', 'output_prefix'].every(name => widget(execute, name)), 'RH Execute fixed controls use native widgets');
 const paramsSourceA = create('RH_Test_RH_PARAMS', [20, 20]);
 const paramsSourceB = create('RH_Test_RH_PARAMS', [20, 120]);
-check(!!paramsSourceA.connect(0, execute, execute.inputs.findIndex(i => i.name === 'params')), 'RH Execute primary params remains connectable');
-check(!!paramsSourceB.connect(0, execute, execute.inputs.findIndex(i => i.name === 'extra_params.params_2')), 'RH Execute additional params uses native Autogrow');
+check(!!paramsSourceA.connect(0, execute, execute.inputs.findIndex(i => i.name === 'params.params')), 'RH Execute params remains connectable');
 await wait();
-check(execute.inputs.some(i => i.name === 'extra_params.params_3'), 'RH Execute Autogrow adds the next RH_PARAMS slot after connection');
+check(execute.inputs.some(i => i.name === 'params.params_1') && !execute.inputs.some(i => i.name === 'params.params_2'), 'Connecting params reveals only params_1');
+check(execute.inputs.find(i => i.name === 'params.params_1')?.localized_name === 'params_1', 'Second RH Execute input is displayed as params_1');
+check(!!paramsSourceB.connect(0, execute, execute.inputs.findIndex(i => i.name === 'params.params_1')), 'RH Execute params_1 accepts the second source');
+await wait();
+check(execute.inputs.some(i => i.name === 'params.params_2'), 'Connecting params_1 reveals params_2');
+check(execute.inputs.find(i => i.name === 'params.params_2')?.localized_name === 'params_2', 'Third RH Execute input is displayed as params_2');
 check(!params.inputs.some(i => /^value_\d+$/.test(i.name)), 'No standalone duplicate wildcard value socket');
 check(params.inputs.some(i => i.name === 'param_count.value_1' && i.widget), 'Value input has the native widget association');
 check(!params.widgets.some(w => /param_count\.enabled_\d+$/.test(w.name)), 'Params V2 has no Enable control');
@@ -101,8 +105,11 @@ diagnostics.saved = { paramsId, sourceId: source.id, nodes: saved.nodes.map(n =>
 // A saved pre-V2 RH_Execute node must keep its widget values and primary params link.
 const legacyExecuteGraph = structuredClone(saved);
 const legacyExecute = legacyExecuteGraph.nodes.find(n => String(n.id) === String(executeId));
-const removedExecuteLinks = new Set((legacyExecute.inputs || []).filter(i => !['config', 'params'].includes(i.name) && i.link != null).map(i => String(i.link)));
-legacyExecute.inputs = (legacyExecute.inputs || []).filter(i => ['config', 'params'].includes(i.name));
+const primaryLegacyInput = (legacyExecute.inputs || []).find(i => i.name === 'params.params');
+const removedExecuteLinks = new Set((legacyExecute.inputs || []).filter(i => i.name.startsWith('params.') && i.name !== 'params.params' && i.link != null).map(i => String(i.link)));
+primaryLegacyInput.name = 'params';
+primaryLegacyInput.label = 'params';
+legacyExecute.inputs = (legacyExecute.inputs || []).filter(i => i.name === 'config' || i === primaryLegacyInput);
 legacyExecute.widgets_values = [777, true, true, 'OLD'];
 delete legacyExecute.widgets_values_named;
 legacyExecuteGraph.links = (legacyExecuteGraph.links || []).filter(link => !removedExecuteLinks.has(String(Array.isArray(link) ? link[0] : link.id)));
@@ -112,7 +119,39 @@ for (const n of legacyExecuteGraph.nodes) for (const output of n.outputs || []) 
 await app.loadGraphData(legacyExecuteGraph);
 execute = app.graph.getNodeById(executeId);
 check(widget(execute, 'timeout')?.value === 777 && widget(execute, 'use_high_performance')?.value === true && widget(execute, 'save_to_local')?.value === true && widget(execute, 'output_prefix')?.value === 'OLD', 'Legacy RH Execute widget values load into the new implementation without shifting');
-check(execute.inputs.find(i => i.name === 'params')?.link != null, 'Legacy RH Execute primary params link survives the replacement');
+check(execute.inputs.find(i => i.name === 'params.params')?.link != null, 'Legacy RH Execute params link migrates to the new Autogrow chain');
+
+// The immediately previous V2 graph used fixed params + extra_params.params_2...
+const previousV2Graph = structuredClone(saved);
+const previousV2Execute = previousV2Graph.nodes.find(n => String(n.id) === String(executeId));
+for (const input of previousV2Execute.inputs || []) {
+    if (input.name === 'params.params') input.name = 'params';
+    else {
+        const match = /^params\.params_(\d+)$/.exec(input.name);
+        if (match) input.name = `extra_params.params_${Number(match[1]) + 1}`;
+    }
+}
+await app.loadGraphData(previousV2Graph);
+execute = app.graph.getNodeById(executeId);
+check(execute.inputs.find(i => i.name === 'params.params')?.link != null, 'Previous V2 params migrates without losing its link');
+check(execute.inputs.find(i => i.name === 'params.params_1')?.link != null, 'Previous V2 params_2 shifts to params_1 without losing its link');
+check(execute.inputs.find(i => i.name === 'params.params_1')?.localized_name === 'params_1', 'Previous V2 migrated input is displayed as params_1');
+
+// Deprecated RH_Execute2 graphs use the same shift: params, params_2, params_3 -> params, params_1, params_2.
+const execute2Graph = structuredClone(saved);
+const execute2 = execute2Graph.nodes.find(n => String(n.id) === String(executeId));
+execute2.type = 'RH_Execute2';
+for (const input of execute2.inputs || []) {
+    if (input.name === 'params.params') input.name = 'params';
+    else {
+        const match = /^params\.params_(\d+)$/.exec(input.name);
+        if (match) input.name = `params_${Number(match[1]) + 1}`;
+    }
+}
+await app.loadGraphData(execute2Graph);
+execute = app.graph.getNodeById(executeId);
+check(execute.type === 'RH_Execute', 'Deprecated RH Execute 2 graph migrates to RH Execute');
+check(execute.inputs.find(i => i.name === 'params.params_1')?.link != null, 'Deprecated RH Execute 2 params_2 shifts to params_1');
 
 await app.loadGraphData(saved);
 execute = app.graph.getNodeById(executeId);

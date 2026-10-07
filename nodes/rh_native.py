@@ -55,8 +55,8 @@ def row_inputs(slot: int, media: bool = False, legacy_multi: bool = False):
         inputs.append(io.Image.Input(f"image_{slot}", display_name=f"Image {slot}", optional=True))
     else:
         inputs.append(scalar_input(f"value_{slot}", f"Value {slot}"))
-    if not legacy_multi:
-        # Preserve disabled legacy rows without a tiny custom HTML checkbox.
+    if media and not legacy_multi:
+        # Image 2 still supports temporarily disabling a media row.
         inputs.append(io.Boolean.Input(f"enabled_{slot}", display_name=f"Enable {slot}", default=True,
                                        advanced=True, socketless=True))
     return inputs
@@ -120,7 +120,6 @@ class RH_Params2Native(io.ComfyNode):
             if value is not None and not isinstance(value, SCALAR_TYPES):
                 raise TypeError(f"Value {slot} accepts only text, integers, decimals and booleans.")
             arguments[f"param_{slot}"] = {
-                "enabled": param_count.get(f"enabled_{slot}", True),
                 "node_id": param_count.get(f"node_id_{slot}", ""),
                 "field_name": field,
                 "custom_field_name": custom,

@@ -7,8 +7,14 @@ const slotOf = (name) => Number(String(name).match(/_(\d+)$/)?.[1] || 0);
 
 export function isLegacyGroup(node) {
     const group = GROUPS[node.type];
-    if (!group || node.properties?.rh_native_ui_version === NATIVE_VERSION) return false;
-    // The official group selector is serialized as a string; the old Params count was a number.
+    if (!group) return false;
+    if (node.type === "RH_Params2") {
+        const hasRemovedEnable = (node.inputs || []).some((input) => input.name.startsWith("param_count.enabled_")) ||
+            Object.keys(node.widgets_values_named || {}).some((name) => name.startsWith("param_count.enabled_"));
+        if (hasRemovedEnable) return true;
+    }
+    if (node.properties?.rh_native_ui_version === NATIVE_VERSION) return false;
+    // The official group selector is serialized as a string; the oldest Params count was a number.
     return !(typeof node.widgets_values?.[0] === "string" && /^\d+$/.test(node.widgets_values[0]) &&
         (node.inputs || []).some((input) => input.name.startsWith(group[0] + ".")));
 }
@@ -19,7 +25,32 @@ export function readLegacyRows(node) {
     const [group, maximum] = config;
     const image = node.type === "RH_UploadImage2";
     const values = node.widgets_values || [];
-    let rows = values.filter((value) => value && typeof value === "object" && !Array.isArray(value) &&
+    const named = node.widgets_values_named || {};
+    const hasNativeEnable = !image && (node.inputs || []).some((input) => input.name.startsWith("param_count.enabled_"));
+    const nativeValues = { ...named };
+    if (hasNativeEnable && !Object.keys(nativeValues).length) {
+        let valueIndex = 0;
+        for (const input of node.inputs || []) {
+            if (!input.widget || valueIndex >= values.length) continue;
+            nativeValues[input.name] = values[valueIndex++];
+        }
+    }
+    let rows = [];
+    if (!image && nativeValues.param_count !== undefined) {
+        const count = Number(nativeValues.param_count);
+        if (!Number.isInteger(count) || count < 1 || count > maximum) throw new Error("Invalid native RH parameter count.");
+        for (let slot = 1; slot <= count; slot++) {
+            rows.push({
+                slot_id: slot,
+                enabled: nativeValues[`param_count.enabled_${slot}`] !== false,
+                node_id: nativeValues[`param_count.node_id_${slot}`],
+                field_name: nativeValues[`param_count.field_name_${slot}`],
+                custom_field_name: nativeValues[`param_count.field_name_${slot}.custom_field_name_${slot}`],
+                local_value: nativeValues[`param_count.value_${slot}`],
+            });
+        }
+    }
+    if (!rows.length) rows = values.filter((value) => value && typeof value === "object" && !Array.isArray(value) &&
         (value.kind === "rh_param2" || value.kind === "rh_upload_image2" || value.node_id !== undefined));
     if (!rows.length && !image) {
         for (const value of values) {
@@ -45,12 +76,22 @@ export function readLegacyRows(node) {
         if (!Number.isInteger(slot) || slot < 1 || slot > maximum || bySlot.has(slot)) {
             throw new Error("RH migration stopped: invalid or duplicate slot " + slot + ". Original workflow is unchanged.");
         }
-        bySlot.set(slot, {
+        const normalized = {
             slot, enabled: row.enabled !== false,
             node_id: scalarText(row.node_id), field_name: scalarText(row.field_name || (image ? "image" : "text")),
             custom_field_name: scalarText(row.custom_field_name),
             value: scalarText(row.local_value ?? row.field_value ?? ""),
-        });
+        };
+        if (!image && !normalized.enabled) {
+            const hasLink = (node.inputs || []).some((input) => slotOf(input.name) === slot && input.link != null);
+            const hasContent = normalized.node_id || normalized.custom_field_name || normalized.value ||
+                (normalized.field_name && normalized.field_name !== "text") || hasLink;
+            if (hasContent) {
+                throw new Error(`RH migration stopped: disabled Params 2 row ${slot} contains saved data or a connection. Enable was removed from Params 2, so this row cannot be activated silently. Open the original workflow with the previous version and either enable or clear that row first.`);
+            }
+            normalized.enabled = true;
+        }
+        bySlot.set(slot, normalized);
     }
     const linkedSlots = (node.inputs || []).map((input) => slotOf(input.name));
     const count = Math.max(1, !image && typeof values[0] === "number" ? values[0] : 1,
@@ -91,7 +132,7 @@ export function applyRowValues(node, decoded) {
         set(`field_name_${row.slot}`, actual);
         if (actual === "custom") set(`field_name_${row.slot}.custom_field_name_${row.slot}`, known ? row.custom_field_name : row.field_name);
         if (!decoded.image) set(`value_${row.slot}`, row.value);
-        set(`enabled_${row.slot}`, row.enabled);
+        if (decoded.image) set(`enabled_${row.slot}`, row.enabled);
     }
 }
 

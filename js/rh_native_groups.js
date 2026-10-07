@@ -1,9 +1,39 @@
-// Small lifecycle guard around ComfyUI's own DynamicCombo. No custom widgets,
-// slot constructors, graph.configure replacement, or serialized value store.
+// Small lifecycle guard around ComfyUI's own DynamicCombo. Business inputs stay native;
+// the only custom widget is a 4px non-serializing visual spacer between Params rows.
 const states = new WeakMap();
 const bound = new WeakSet();
+const PARAM_GAP_PX = 4;
 
 const slotOf = (name) => Number(String(name).match(/_(\d+)(?:\.|$)/)?.[1] || 0);
+const isParamSpacer = (widget) => widget?._rhParamGap === true;
+
+function syncParamSpacers(node, state) {
+    if (state.group !== "param_count" || !node.widgets) return;
+    for (let index = node.widgets.length - 1; index >= 0; index--) {
+        if (isParamSpacer(node.widgets[index])) node.widgets.splice(index, 1);
+    }
+    const count = Number(state.selector.value) || 1;
+    for (let slot = count - 1; slot >= 1; slot--) {
+        let insertAfter = -1;
+        for (let index = 0; index < node.widgets.length; index++) {
+            const name = node.widgets[index]?.name || "";
+            if (name.startsWith(state.group + ".") && slotOf(name) === slot) insertAfter = index;
+        }
+        if (insertAfter < 0) continue;
+        node.widgets.splice(insertAfter + 1, 0, {
+            name: `__rh_param_gap_${slot}`,
+            type: "custom",
+            value: null,
+            serialize: false,
+            options: { serialize: false },
+            _rhParamGap: true,
+            node,
+            draw() {},
+            mouse() { return false; },
+            computeSize(width) { return [Number(width) || 0, PARAM_GAP_PX]; },
+        });
+    }
+}
 
 export function labelNativeControls(node) {
     const labels = { param_count: "Param Count", image_count: "Image Count", node_id: "Node ID",
@@ -62,6 +92,7 @@ function reductionHasContent(snapshot, target) {
 
 function bindRows(node, state) {
     labelNativeControls(node);
+    syncParamSpacers(node, state);
     state.widgets = (node.widgets || []).filter((widget) => widget.name.startsWith(state.group + "."));
     state.inputNames = (node.inputs || []).map((input) => input.name);
     for (const widget of state.widgets) {

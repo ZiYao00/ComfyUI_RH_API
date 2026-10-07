@@ -42,7 +42,7 @@ Use `RH Param`:
 
 Chain multiple `RH Param` nodes through `previous_params` when needed, then connect the final `params` to `RH Execute`.
 
-For multiple parameters in one node, use `RH Params 2`: select Param Count, then fill each Node / Field / Value. Each Value is one native connectable input, not a local fallback plus a separate override socket. Select custom to expose that row's custom field. A destructive count reduction asks for confirmation; cancel retains values and links. Connect its `params` output to an RH_PARAMS input on the execution node. Open legacy experimental graph workflows from a copy and re-export API prompts after migration.
+For multiple parameters in one node, use `RH Params 2`: select Param Count, then fill each Node / Field / Value. Each Value is one native connectable input, not a local fallback plus a separate override socket. Params 2 has no Enable switch; an unused empty row is simply ignored. Select custom to expose that row's custom field. Adjacent parameter groups use a 4 px display-only gap that is not serialized. A destructive count reduction asks for confirmation; cancel retains values and links. Connect its `params` output to an RH_PARAMS input on the execution node. Open legacy experimental graph workflows from a copy and re-export API prompts after migration.
 
 ## 5. Upload local media
 

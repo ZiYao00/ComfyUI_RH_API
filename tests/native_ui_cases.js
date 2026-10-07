@@ -31,8 +31,12 @@ diagnostics.initial = nodes.map(node => ({ type: node.type, size: [...node.size]
 check(nodes.length === 9 && nodes.every(n => !n.has_errors), 'All nine native nodes construct');
 check(!params.inputs.some(i => /^value_\d+$/.test(i.name)), 'No standalone duplicate wildcard value socket');
 check(params.inputs.some(i => i.name === 'param_count.value_1' && i.widget), 'Value input has the native widget association');
+check(!params.widgets.some(w => /param_count\.enabled_\d+$/.test(w.name)), 'Params 2 has no Enable control');
 check(!images.widgets.some(w => w.name.startsWith('image_meta_')), 'Image 2 has no handwritten DOM metadata widget');
 set(params, 'param_count', '4');
+const paramGaps = params.widgets.filter(w => w._rhParamGap === true);
+check(paramGaps.length === 3, 'Four Params rows create three visual spacers');
+check(paramGaps.every(w => w.computeSize(params.size[0])[1] === 4 && w.serialize === false), 'Params row spacers are 4px and non-serializing');
 set(params, 'param_count.node_id_1', '12');
 set(params, 'param_count.value_1', 'latest');
 set(params, 'param_count.node_id_3', '33');
@@ -90,11 +94,26 @@ if (typeof app.extensionManager.command?.execute === 'function') {
 const prompt = await app.graphToPrompt();
 diagnostics.prompt = prompt.output;
 check(!JSON.stringify(prompt.output).includes('local_value_'), 'API prompt has no second local-value field');
+check(!JSON.stringify(saved).includes('__rh_param_gap_'), 'Visual spacers are not serialized into the workflow');
+
+// Native-v1 Params briefly had Enable controls. They must migrate without shifting values.
+const nativeV1 = structuredClone(saved);
+const v1Param = nativeV1.nodes.find(n => String(n.id) === String(paramsId));
+v1Param.widgets_values_named ??= {};
+for (let slot = 1; slot <= 4; slot++) {
+    v1Param.widgets_values_named[`param_count.enabled_${slot}`] = true;
+    v1Param.inputs.push({ name: `param_count.enabled_${slot}`, type: 'BOOLEAN', widget: { name: `param_count.enabled_${slot}` }, link: null });
+}
+await app.loadGraphData(nativeV1);
+params = app.graph.getNodeById(paramsId);
+check(!params.widgets.some(w => /param_count\.enabled_\d+$/.test(w.name)), 'Native-v1 Params Enable controls are removed during migration');
+check(widget(params, 'param_count.value_1')?.value === 'hello-world' && widget(params, 'param_count.value_3')?.value === 'keep-three', 'Native-v1 Params values survive Enable removal');
 
 // Exercise actual legacy-workflow load, not a mocked widget factory.
 const legacy = structuredClone(saved);
 const old = legacy.nodes.find(n => String(n.id) === String(paramsId));
 old.properties = {};
+delete old.widgets_values_named;
 old.widgets_values = [2, '12', 'custom', 'prompt_text', 'legacy-text', '13', 'width', '', '1024'];
 old.inputs = [{ name: 'previous_params', type: 'RH_PARAMS', link: null }, { name: 'value_1', type: '*', link: 9001 }, { name: 'value_2', type: '*', link: null }];
 legacy.links = legacy.links.filter(link => String(Array.isArray(link) ? link[3] : link.target_id) !== String(paramsId));

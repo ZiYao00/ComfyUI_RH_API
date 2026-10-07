@@ -11,10 +11,53 @@ test('flat count format preserves field and value positions', () => {
     assert.equal(data.rows[0].custom_field_name, 'prompt');
     assert.equal(data.rows[1].value, '0');
 });
-test('older JSON metadata preserves disabled values', () => {
-    const data = readLegacyRows(legacy([JSON.stringify([{ slot_id: 1, enabled: false, node_id: '12', field_value: false }])]));
-    assert.equal(data.rows[0].enabled, false);
-    assert.equal(data.rows[0].value, 'false');
+test('disabled legacy Params rows with saved data stop instead of becoming active', () => {
+    assert.throws(
+        () => readLegacyRows(legacy([JSON.stringify([{ slot_id: 1, enabled: false, node_id: '12', field_value: false }])])),
+        /Enable was removed/
+    );
+});
+test('empty disabled legacy Params row can migrate as an empty row', () => {
+    const data = readLegacyRows(legacy([JSON.stringify([{ slot_id: 1, enabled: false }])]));
+    assert.equal(data.rows[0].enabled, true);
+    assert.equal(data.rows[0].node_id, '');
+});
+test('native v1 Params with Enable is detected and decoded by named widget values', () => {
+    const node = {
+        type: 'RH_Params2',
+        inputs: [{ name: 'param_count.enabled_1', link: null }],
+        widgets_values: ['1', '12', 'width', '1024', true],
+        widgets_values_named: {
+            param_count: '1',
+            'param_count.node_id_1': '12',
+            'param_count.field_name_1': 'width',
+            'param_count.value_1': '1024',
+            'param_count.enabled_1': true,
+        },
+    };
+    assert.equal(isLegacyGroup(node), true);
+    const data = readLegacyRows(node);
+    assert.equal(data.rows[0].node_id, '12');
+    assert.equal(data.rows[0].field_name, 'width');
+    assert.equal(data.rows[0].value, '1024');
+});
+test('native v1 Params can decode positional widget values when named values are missing', () => {
+    const node = {
+        type: 'RH_Params2',
+        inputs: [
+            { name: 'previous_params', link: null },
+            { name: 'param_count', widget: { name: 'param_count' }, link: null },
+            { name: 'param_count.node_id_1', widget: { name: 'param_count.node_id_1' }, link: null },
+            { name: 'param_count.field_name_1', widget: { name: 'param_count.field_name_1' }, link: null },
+            { name: 'param_count.value_1', widget: { name: 'param_count.value_1' }, link: null },
+            { name: 'param_count.enabled_1', widget: { name: 'param_count.enabled_1' }, link: null },
+        ],
+        widgets_values: ['1', '12', 'width', '1024', true],
+    };
+    const data = readLegacyRows(node);
+    assert.equal(data.rows[0].node_id, '12');
+    assert.equal(data.rows[0].field_name, 'width');
+    assert.equal(data.rows[0].value, '1024');
 });
 test('sparse images keep IDs and inactive gaps', () => {
     const data = readLegacyRows({ type: 'RH_UploadImage2', widgets_values: [

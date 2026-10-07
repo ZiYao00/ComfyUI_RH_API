@@ -59,6 +59,7 @@ def main():
                     self.assertEqual(set(kind.split(",")), {"STRING", "INT", "FLOAT", "BOOLEAN"})
                     self.assertEqual(config["widgetType"], "STRING")
                     self.assertNotIn(f"local_value_{slot}", required)
+                    self.assertNotIn(f"enabled_{slot}", required)
 
         def test_audio_still_accepts_a_path_video_still_accepts_video(self):
             self.assertEqual(definitions["RH_UploadAudio"]["input"]["required"]["audio_path"][0], "STRING")
@@ -73,10 +74,10 @@ def main():
             self.assertEqual([item["fieldValue"] for item in result], ["keep", "0", "false", "0.25", ""])
             self.assertEqual(len(previous), 1)
 
-        def test_empty_and_disabled_rows(self):
+        def test_empty_rows_are_ignored_without_an_enable_control(self):
             result = native.RH_Params2Native.execute({"param_count": "2", "node_id_1": "", "value_1": "",
-                                                      "node_id_2": "2", "value_2": "skip", "enabled_2": False}).result[0]
-            self.assertEqual(result, [])
+                                                      "node_id_2": "2", "value_2": "keep"}).result[0]
+            self.assertEqual(result, [{"nodeId": "2", "fieldName": "text", "fieldValue": "keep"}])
 
         def test_custom_field_and_invalid_scalar(self):
             group = {"param_count": "1", "node_id_1": "3", "field_name_1": {"field_name_1": "custom", "custom_field_name_1": "prompt"}, "value_1": "hello"}

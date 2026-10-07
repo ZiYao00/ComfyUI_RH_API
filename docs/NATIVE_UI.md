@@ -16,7 +16,7 @@
 
 每组只有一个正式 Value 输入：可以本地填写，也可以在同一个输入上连接 STRING、INT、FLOAT、BOOLEAN。连接方式和控件显示由 ComfyUI 原生前端管理，不再手工创建顶部 wildcard value_N 与下方 local_value_N 两套字段。不能向标量 Value 连接 IMAGE 等媒体对象。
 
-Param Count 控制 1 至 16 组。每组填写 Node、Field、Value；Field 选择 custom 时，由原生 DynamicCombo 显示 Custom Field。Enable 使用原生布尔控件并标记为 advanced，用于保留旧工作流的禁用状态；不同渲染器可能以不同方式呈现高级控件，不另造微型 HTML 勾选框。
+Param Count 控制 1 至 16 组。每组只保留 Node、Field、Value；Field 选择 custom 时，由原生 DynamicCombo 显示 Custom Field。Params 2 不再提供 Enable：空 Node ID 的空行自然不会输出，不再维护第二套“是否启用”状态。相邻参数组之间增加一个 4 px 的纯视觉 spacer，仅参与画布布局，不序列化、不进入 prompt、不参与 RH 参数执行。
 
 修改普通 Value 内容不应改变节点宽高。改变组数或显隐字段属于结构变化，由原生控件处理布局。减少组数涉及填写内容或连线时会确认；取消必须恢复原值、组数和连接。确认减少会移除对应连接；原生选项缓存不是永久备份，不承诺确认删除后跨刷新恢复，操作前应保存工作流。
 
@@ -43,7 +43,7 @@ RH_UploadMask 的源文件原本就存在，但包入口的导入和注册均被
 
 `nodes/rh_native.py` 是 Params 2 与八个 Upload 节点的活动 schema 入口；`__init__.py` 将既有节点 ID 映射到这些 V3 ComfyNode 类。既有 upload 模块继续负责媒体编码、上传协议与返回值处理，不是第二套并行界面。RH HTTP 协议、付费提交与执行节点本轮没有切换。
 
-`js/rh_native_ui.js` 使用扩展生命周期钩子协调迁移与标签。`js/rh_native_groups.js` 仅为官方 DynamicCombo 添加组数变化的安全保护，不创建控件/接口，不替换 prototype.configure，不建立另一套持久化参数格式。`js/rh_native_migration.js` 只处理历史图工作流数据。
+`js/rh_native_ui.js` 使用扩展生命周期钩子协调迁移与标签。`js/rh_native_groups.js` 为官方 DynamicCombo 添加组数变化的安全保护，并为 Params 插入唯一的 4 px 非交互 spacer；它不创建业务输入/接口，不替换 prototype.configure，也不建立另一套持久化参数格式。`js/rh_native_migration.js` 只处理历史图工作流数据。
 
 旧 `js/rh_params2.js` 与 `js/rh_upload_image2.js` 保留为无操作说明入口，避免恢复手写 DOM 或双输入设计。旧 Params Python 解析器作为内部/历史兼容服务保留，不能据此重新暴露旧 UI。
 
@@ -53,7 +53,7 @@ RH_UploadMask 的源文件原本就存在，但包入口的导入和注册均被
 
 ## 4. 历史工作流迁移边界
 
-支持此次项目已有的顶层图工作流格式：Params 2 的数字数量加位置值数组、旧对象行/JSON 行，以及 Image 2 的对象行。迁移在副本上校验，用临时原生节点生成新控件序列化数据，再按输入名重映射连线；保留节点 ID、独立目标、自定义字段、禁用状态与稀疏槽位编号。
+支持此次项目已有的顶层图工作流格式：Params 2 的数字数量加位置值数组、旧对象行/JSON 行、上一版带 Enable 的原生 Params 2，以及 Image 2 的对象行。迁移在副本上校验，用临时原生节点生成新控件序列化数据，再按输入名重映射连线；保留节点 ID、独立目标、自定义字段和稀疏槽位编号。Image 2 继续保留禁用状态；Params 2 已移除 Enable，因此旧 Params 中“已关闭但仍保存数据或连接”的行会明确阻止迁移，不能静默变成启用状态。
 
 外部 value_N 连线和本地 local_value_N 值迁移到同一个原生 Value。若两份历史输入都连接而产生冲突，不能默默选一个。异常编号、重复槽位、缺失或无法映射的连接需要明确阻止，而不是用默认空值继续。
 
@@ -70,8 +70,8 @@ ComfyUI 会记录扩展钩子异常后继续加载，因此仅抛异常不是安
 | --- | --- | --- |
 | 原有 Python 单元测试 | 54/54 通过 | HTTP 客户端、任务提交安全、输出处理、历史解析等；模拟请求 |
 | 当前真实 ComfyUI API/schema | 13/13 通过 | 九个类注册、类型与输出契约、官方动态输入展开与 EXECUTE_NORMALIZED、上传参数传递；网络禁止/上传模拟 |
-| JavaScript 迁移单测 | 9/9 通过 | 旧格式、稀疏编号、异常拒绝、事务性、子图边界与禁止重建 UI |
-| 实际安装前端的隔离浏览器 | 45/45 通过 | 原生值与连接、四种标量、媒体拒接、Primitive/Reroute、增减取消、保存重载、复制粘贴、原生撤销重做、Params/Image2 迁移、异常占位、主题切换 |
+| JavaScript 迁移单测 | 12/12 通过 | 旧格式、上一版原生 Enable 格式、位置值回退、稀疏编号、异常拒绝、事务性、子图边界与禁止重建 UI |
+| 实际安装前端的隔离浏览器 | 51/51 通过 | 原生值与连接、Params 无 Enable、4 px 非序列化分隔、四种标量、媒体拒接、Primitive/Reroute、增减取消、保存重载、复制粘贴、原生撤销重做、Params/Image2 迁移、异常占位、主题切换 |
 
 浏览器使用已有 Edge、1920×1080 视口。测试代理读取当前实际前端文件，注入本项目新 schema 与测试来源节点；没有重启运行中的后端，也没有把测试节点注册到用户服务。所有写请求均不会转发到用户服务，用户设置和文件列表使用隔离数据。没有使用真实 RH 凭据，没有提交付费任务。
 

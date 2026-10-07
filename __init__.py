@@ -96,6 +96,11 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "RH_TaskManager": "🛠️ RH Task Manager",
 }
 
+# V3 ComfyNode classes also implement the standard registry bridge. Keep the
+# mixed registry so unrelated execution nodes are not needlessly migrated.
+from .nodes.rh_native import NATIVE_NODE_CLASS_MAPPINGS
+NODE_CLASS_MAPPINGS.update(NATIVE_NODE_CLASS_MAPPINGS)
+
 WEB_DIRECTORY = "js"
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]
 

@@ -8,3 +8,6 @@ __pycache__/
 # Test/runtime scratch files.
 .pytest_cache/
 .coverage
+
+# Isolated UI-test browser profile, schemas and screenshots.
+.ui-test/

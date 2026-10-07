@@ -8,13 +8,21 @@ Existing ComfyUI node IDs are public workflow contracts. Keep names such as `RH_
 
 Repository name, display name, documentation branding, and hosting location may change independently from node IDs.
 
-New inputs should be optional and preserve old defaults whenever possible. Existing saved workflows should continue to load without migration.
+New inputs should be optional and preserve old defaults whenever possible. Stable released node contracts should load without migration. Experimental Params 2 / Image 2 graph schema changes require the explicit migration path below; never silently reinterpret saved positional values.
 
-### Experimental v2 node policy
+### Native input/UI policy (2026-10-07)
 
-`RH_Execute2` / `▶️ RH Execute 2`, `RH_Params2` / `⚙️ RH Params 2`, and `RH_UploadImage2` / `📤 RH Upload Image 2` are temporary side-by-side development nodes. They must not replace or rename `RH_Execute`, `RH_Param`, or the existing upload nodes until their dynamic UI, workflow save/reload behavior, parameter fan-in, conflict handling, media upload routing, and output-save behavior have passed real ComfyUI regression. The legacy node IDs remain the compatibility contract during this experiment.
+`nodes/rh_native.py` is the active schema boundary for `RH_Params2` and all eight registered upload nodes. It uses official V3 `ComfyNode`, `MultiType`, and `DynamicCombo` APIs and preserves public node IDs. The old upload classes are implementation services for unchanged media encoding and RH HTTP behavior, not a second active UI. `RH_Execute2` remains separate from `RH_Execute`; this change does not promote or replace the execution pipeline.
 
-The v2 parameter model preserves the complete legacy parameter tuple: `node_id`, `field_name`, optional `custom_field_name`, and value. Each `RH Params 2` row has a local fallback value plus a matching external `value_N` socket; a connected external value overrides the local value. `RH Upload Image 2` applies the same row model to multiple IMAGE sockets so every image can target an independent RH node/field/custom field. Dynamic rows use stable slot IDs and must not renumber surviving rows after a deletion.
+Each Params row has exactly ONE declared Value input. A native STRING widget can accept linked STRING, INT, FLOAT or BOOLEAN values through `MultiType`. Do not reintroduce separate `local_value_N` widgets plus wildcard `value_N` sockets. The legacy parser still accepts older tuples for migration/tests; that is not permission to expose the old design again.
+
+Image 2 uses native repeated configuration groups and true IMAGE inputs. Count and custom-field visibility belong to `DynamicCombo`, not handwritten HTML forms. Ordinary editing must not resize nodes. Count changes are structural: shared values must remain current, destructive reductions must be confirmed, cancellation must restore connections, and saved dimensions must survive load/clone/paste. The small shared lifecycle guard does not create controls or replace `prototype.configure`.
+
+Fixed-input upload nodes preserve their flat API names, widget order and output contracts. Audio remains an audio file path input, Video remains VIDEO, File/Latent remain RH_PARAM, and batch image uploads retain their distinct batch semantics. `RH_UploadMask` was not registered before this work and is not silently enabled by this change.
+
+Legacy experimental Params 2 / Image 2 GRAPH workflows have an explicit, transactional migration adapter. Preserve stable slot IDs, disabled rows, values, custom fields and external links; never renumber surviving mappings. Duplicate/unsupported mappings or legacy groups inside subgraph definitions must produce blocked placeholders and an explicit warning, not a runnable node with default values. Old experimental API-format prompts must be re-exported after graph migration. See [Native UI guide and verification record](NATIVE_UI.md).
+
+Verified runtime: ComfyUI 0.39.0 and frontend 1.53.10. These are tested versions, not an assertion that all older versions are incompatible. Do not silently fall back to the old double-input UI, auto-upgrade the runtime, or confuse the ComfyUI V3 schema with RunningHub's V2 HTTP API.
 
 ## 2. RunningHub API boundary
 

@@ -1,5 +1,7 @@
 # Quick Start Guide
 
+> Native UI update (2026-10-07): Params 2 and all eight registered upload nodes now use native V3 schemas. Tested with ComfyUI 0.39.0 / frontend 1.53.10. Save an original workflow copy, restart the backend, then refresh with Ctrl+F5. See [原生输入使用说明、迁移边界与验证记录](NATIVE_UI.md). This update does not install or upgrade runtime dependencies.
+
 ## 1. Install
 
 Place `ComfyUI_RH_API` under `ComfyUI/custom_nodes/`, install `requirements.txt`, and restart ComfyUI.
@@ -40,6 +42,8 @@ Use `RH Param`:
 
 Chain multiple `RH Param` nodes through `previous_params` when needed, then connect the final `params` to `RH Execute`.
 
+For multiple parameters in one node, use `RH Params 2`: select Param Count, then fill each Node / Field / Value. Each Value is one native connectable input, not a local fallback plus a separate override socket. Select custom to expose that row's custom field. A destructive count reduction asks for confirmation; cancel retains values and links. Connect its `params` output to an RH_PARAMS input on the execution node. Open legacy experimental graph workflows from a copy and re-export API prompts after migration.
+
 ## 5. Upload local media
 
 Use the matching upload node:
@@ -50,7 +54,9 @@ Use the matching upload node:
 - generic file -> `RH Upload File`
 - latent -> `RH Upload Latent`
 
-Each upload node can optionally append the returned RH filename to the parameter list for the remote node/field.
+Image / Video / Audio can optionally append the returned RH filename to `RH_PARAMS`. File / Latent keep their existing single `RH_PARAM` output, and batch image nodes retain their separate batch semantics. Audio still accepts a file path, not an AUDIO waveform.
+
+`RH Upload Image 2` provides 1 to 12 native groups with independent target node/field settings and IMAGE inputs. Its old HTML row form is retired. The unregistered `RH_UploadMask` module is not enabled by this update.
 
 ## 6. Understand output saving
 

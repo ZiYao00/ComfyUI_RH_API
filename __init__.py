@@ -7,8 +7,11 @@ Description: Easy-to-use nodes for calling RunningHub cloud workflows and AI app
 
 from .nodes.rh_config import RH_Config
 from .nodes.rh_execute import RH_Execute
+from .nodes.rh_execute2 import RH_Execute2
 from .nodes.rh_param import RH_Param
+from .nodes.rh_params2 import RH_Params2
 from .nodes.rh_upload_image import RH_UploadImage
+from .nodes.rh_upload_image2 import RH_UploadImage2
 from .nodes.rh_upload_video import RH_UploadVideo
 from .nodes.rh_upload_audio import RH_UploadAudio
 from .nodes.rh_load_audio_path import RH_LoadAudioPath
@@ -27,10 +30,13 @@ NODE_CLASS_MAPPINGS = {
     # Core nodes
     "RH_Config": RH_Config,
     "RH_Execute": RH_Execute,
+    "RH_Execute2": RH_Execute2,
     "RH_Param": RH_Param,
+    "RH_Params2": RH_Params2,
 
     # Upload nodes
     "RH_UploadImage": RH_UploadImage,
+    "RH_UploadImage2": RH_UploadImage2,
     "RH_UploadVideo": RH_UploadVideo,
     "RH_UploadAudio": RH_UploadAudio,
     "RH_LoadAudioPath": RH_LoadAudioPath,
@@ -59,10 +65,13 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     # Core nodes
     "RH_Config": "🌐 RH Config",
     "RH_Execute": "▶️ RH Execute",
+    "RH_Execute2": "▶️ RH Execute 2",
     "RH_Param": "⚙️ RH Param",
+    "RH_Params2": "⚙️ RH Params 2",
 
     # Upload nodes
     "RH_UploadImage": "📤 RH Upload Image",
+    "RH_UploadImage2": "📤 RH Upload Image 2",
     "RH_UploadVideo": "📤 RH Upload Video",
     "RH_UploadAudio": "📤 RH Upload Audio",
     "RH_LoadAudioPath": "🎵 RH Load Audio Path",

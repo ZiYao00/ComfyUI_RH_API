@@ -10,6 +10,12 @@ Repository name, display name, documentation branding, and hosting location may 
 
 New inputs should be optional and preserve old defaults whenever possible. Existing saved workflows should continue to load without migration.
 
+### Experimental v2 node policy
+
+`RH_Execute2` / `▶️ RH Execute 2`, `RH_Params2` / `⚙️ RH Params 2`, and `RH_UploadImage2` / `📤 RH Upload Image 2` are temporary side-by-side development nodes. They must not replace or rename `RH_Execute`, `RH_Param`, or the existing upload nodes until their dynamic UI, workflow save/reload behavior, parameter fan-in, conflict handling, media upload routing, and output-save behavior have passed real ComfyUI regression. The legacy node IDs remain the compatibility contract during this experiment.
+
+The v2 parameter model preserves the complete legacy parameter tuple: `node_id`, `field_name`, optional `custom_field_name`, and value. Each `RH Params 2` row has a local fallback value plus a matching external `value_N` socket; a connected external value overrides the local value. `RH Upload Image 2` applies the same row model to multiple IMAGE sockets so every image can target an independent RH node/field/custom field. Dynamic rows use stable slot IDs and must not renumber surviving rows after a deletion.
+
 ## 2. RunningHub API boundary
 
 RunningHub HTTP behavior belongs in `nodes/rh_client.py`.
@@ -174,8 +180,8 @@ Unit tests use the Python standard library (`unittest`, mocks/stubs) so connecto
 Before a local maintenance commit, run:
 
 ```bash
-python3 -m unittest discover -s tests -p "test_*.py" -v
-python3 -m compileall -q nodes tests
+python -B tests/run_tests.py
+python -B -m compileall -q nodes tests
 git diff --check
 ```
 

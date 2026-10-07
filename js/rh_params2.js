@@ -63,7 +63,7 @@ function resizeNode(node) {
 
         const currentWidth = Number(node.size?.[0]) || Number(computed[0]) || 360;
         const next = [
-            Math.max(currentWidth, 360),
+            currentWidth,
             Math.max(computed[1], 110),
         ];
 

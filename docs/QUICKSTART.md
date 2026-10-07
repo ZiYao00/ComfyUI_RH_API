@@ -1,6 +1,6 @@
 # Quick Start Guide
 
-> Native UI update (2026-10-07): Params 2 and all eight registered upload nodes now use native V3 schemas. Tested with ComfyUI 0.39.0 / frontend 1.53.10. Save an original workflow copy, restart the backend, then refresh with Ctrl+F5. See [原生输入使用说明、迁移边界与验证记录](NATIVE_UI.md). This update does not install or upgrade runtime dependencies.
+> Native UI update (2026-10-07): `RH Execute`, `RH Params V2`, and all eight registered upload nodes now use the current V3 schema path. `RH Execute` incorporates the former Execute 2 multi-params behavior; `RH Execute 2` remains deprecated only for old workflow compatibility. Tested with ComfyUI 0.39.0 / frontend 1.53.10. Save an original workflow copy, restart the backend, then refresh with Ctrl+F5. See [原生输入使用说明、迁移边界与验证记录](NATIVE_UI.md). This update does not install or upgrade runtime dependencies.
 
 ## 1. Install
 
@@ -30,7 +30,7 @@ The optional `query_api` selector on `RH Config` defaults to `legacy`. Keep that
 
 Add `RH Execute`, connect `RH Config.config`, and queue the prompt.
 
-`RH Execute` waits for the RH task, preserves the original returned files, converts supported files to ComfyUI values, and returns the `task_id`.
+`RH Execute` waits for the RH task, preserves/stages the returned files, converts supported files to ComfyUI values, and returns the `task_id`. Its primary `params` input stays compatible with old workflows; connecting additional RH_PARAMS sources uses native Autogrow (`params_2`, `params_3`, ...). Later sources override duplicate node/field pairs, matching the former Execute 2 behavior.
 
 ## 4. Override text parameters
 
@@ -42,7 +42,7 @@ Use `RH Param`:
 
 Chain multiple `RH Param` nodes through `previous_params` when needed, then connect the final `params` to `RH Execute`.
 
-For multiple parameters in one node, use `RH Params 2`: select Param Count, then fill each Node / Field / Value. Each Value is one native connectable input, not a local fallback plus a separate override socket. Params 2 has no Enable switch; an unused empty row is simply ignored. Select custom to expose that row's custom field. Adjacent parameter groups use a 4 px display-only gap that is not serialized. A destructive count reduction asks for confirmation; cancel retains values and links. Connect its `params` output to an RH_PARAMS input on the execution node. Open legacy experimental graph workflows from a copy and re-export API prompts after migration.
+For multiple parameters in one node, use `RH Params V2`: select Param Count, then fill each Node / Field / Value. Each Value is one native connectable input, not a local fallback plus a separate override socket. There is no Enable switch; an unused empty row is ignored. Select custom to expose that row's custom field. Visible groups use a 4 px display-only gap that is not serialized. Reducing Param Count hides higher rows immediately with no confirmation and excludes them from execution; increasing Count again in the same editor session restores their cached values and links. This hidden-row cache is not a cross-restart persistence guarantee, so restore the Count before saving if those hidden rows must survive a close/reload. Connect the node's `params` output to `RH Execute`.
 
 ## 5. Upload local media
 
@@ -56,7 +56,7 @@ Use the matching upload node:
 
 Image / Video / Audio can optionally append the returned RH filename to `RH_PARAMS`. File / Latent keep their existing single `RH_PARAM` output, and batch image nodes retain their separate batch semantics. Audio still accepts a file path, not an AUDIO waveform.
 
-`RH Upload Image 2` provides 1 to 12 native groups with independent target node/field settings and IMAGE inputs. Its old HTML row form is retired. The unregistered `RH_UploadMask` module is not enabled by this update.
+`RH Upload Image V2` provides 1 to 12 native groups with independent target node/field settings and IMAGE inputs. It has no Enable switch, uses the same 4 px visible-row spacing as Params V2, and follows the same no-dialog Count reduction / same-session restoration behavior for mapping values and IMAGE links. The old HTML row form is retired. The single-image `RH Upload Image` remains a separate node, and the unregistered `RH_UploadMask` module is not enabled by this update.
 
 ## 6. Understand output saving
 

@@ -65,13 +65,13 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     # Core nodes
     "RH_Config": "🌐 RH Config",
     "RH_Execute": "▶️ RH Execute",
-    "RH_Execute2": "▶️ RH Execute 2",
+    "RH_Execute2": "▶️ RH Execute 2 (Deprecated)",
     "RH_Param": "⚙️ RH Param",
-    "RH_Params2": "⚙️ RH Params 2",
+    "RH_Params2": "⚙️ RH Params V2",
 
     # Upload nodes
     "RH_UploadImage": "📤 RH Upload Image",
-    "RH_UploadImage2": "📤 RH Upload Image 2",
+    "RH_UploadImage2": "📤 RH Upload Image V2",
     "RH_UploadVideo": "📤 RH Upload Video",
     "RH_UploadAudio": "📤 RH Upload Audio",
     "RH_LoadAudioPath": "🎵 RH Load Audio Path",

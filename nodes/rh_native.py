@@ -9,6 +9,7 @@ from __future__ import annotations
 from comfy_api.latest import io
 
 from .rh_params2 import RH_Params2 as ParamsBuilder, FIELD_NAMES
+from .rh_execute2 import RH_Execute2 as ExecuteService
 from .rh_upload_image import RH_UploadImage as ImageUploader
 from .rh_upload_image2 import RH_UploadImage2 as MultiImageUploader, IMAGE_FIELD_NAMES
 from .rh_upload_video import RH_UploadVideo as VideoUploader
@@ -55,10 +56,6 @@ def row_inputs(slot: int, media: bool = False, legacy_multi: bool = False):
         inputs.append(io.Image.Input(f"image_{slot}", display_name=f"Image {slot}", optional=True))
     else:
         inputs.append(scalar_input(f"value_{slot}", f"Value {slot}"))
-    if media and not legacy_multi:
-        # Image 2 still supports temporarily disabling a media row.
-        inputs.append(io.Boolean.Input(f"enabled_{slot}", display_name=f"Enable {slot}", default=True,
-                                       advanced=True, socketless=True))
     return inputs
 
 
@@ -105,7 +102,7 @@ def validate_route(node_id, field_name, custom_field_name="", *, required=False)
 class RH_Params2Native(io.ComfyNode):
     @classmethod
     def define_schema(cls):
-        return io.Schema(node_id="RH_Params2", display_name="\u2699\ufe0f RH Params 2", category=CATEGORY,
+        return io.Schema(node_id="RH_Params2", display_name="\u2699\ufe0f RH Params V2", category=CATEGORY,
                          description="Native RH parameter groups. A single Value input supports both typing and links.",
                          inputs=[count_group("param_count", 16), Params.Input("previous_params", optional=True)],
                          outputs=[Params.Output(display_name="params")])
@@ -131,7 +128,7 @@ class RH_Params2Native(io.ComfyNode):
 class RH_UploadImage2Native(io.ComfyNode):
     @classmethod
     def define_schema(cls):
-        return io.Schema(node_id="RH_UploadImage2", display_name="\U0001f4e4 RH Upload Image 2", category=CATEGORY,
+        return io.Schema(node_id="RH_UploadImage2", display_name="\U0001f4e4 RH Upload Image V2", category=CATEGORY,
                          inputs=[Config.Input("config"), count_group("image_count", 12, media=True),
                                  Params.Input("previous_params", optional=True)],
                          outputs=[Params.Output(display_name="params")])
@@ -146,14 +143,80 @@ class RH_UploadImage2Native(io.ComfyNode):
             row = {
                 "node_id": image_count.get(f"node_id_{slot}", ""),
                 "field_name": field, "custom_field_name": custom,
-                "enabled": image_count.get(f"enabled_{slot}", True),
+                "enabled": True,
             }
             image = image_count.get(f"image_{slot}")
-            if row["enabled"] and image is not None:
+            if image is not None:
                 validate_route(row["node_id"], field, custom, required=True)
             arguments[f"image_meta_{slot}"] = row
             arguments[f"image_{slot}"] = image
         return io.NodeOutput(*MultiImageUploader().upload(config, previous_params=previous_params, **arguments))
+
+
+def execute_schema(node_id: str, title: str, *, deprecated: bool = False):
+    extra_names = [f"params_{index}" for index in range(2, 17)]
+    return io.Schema(
+        node_id=node_id,
+        display_name=title,
+        category=CATEGORY,
+        description="Execute a RunningHub workflow with one or more RH_PARAMS sources.",
+        inputs=[
+            Config.Input("config", tooltip="RunningHub configuration from RH Config."),
+            io.Int.Input("timeout", display_name="Timeout", default=600, min=60, max=3600,
+                         tooltip="Maximum time to wait for task completion in seconds."),
+            Params.Input("params", display_name="params", optional=True,
+                         tooltip="Primary RH_PARAMS source."),
+            io.Autogrow.Input(
+                "extra_params",
+                template=io.Autogrow.TemplateNames(
+                    Params.Input("params_2", display_name="params 2"),
+                    names=extra_names,
+                    min=0,
+                ),
+                display_name="Additional Params",
+                optional=True,
+                tooltip="Connect additional RH_PARAMS sources; later sources override duplicate node/field pairs.",
+            ),
+            io.Boolean.Input("use_high_performance", display_name="High Performance", default=False,
+                             tooltip="Use the high-performance RunningHub instance when supported."),
+            io.Boolean.Input("save_to_local", display_name="Save RH Originals", default=False,
+                             tooltip="Also preserve RunningHub original files in the ComfyUI output directory."),
+            io.String.Input("output_prefix", display_name="Output Prefix", default="RH", multiline=False,
+                            tooltip="Prefix used only when RH original files are preserved."),
+        ],
+        outputs=[
+            io.Image.Output(display_name="images"),
+            io.Image.Output(display_name="video_frames"),
+            io.String.Output(display_name="text"),
+            io.Audio.Output(display_name="audio"),
+            io.Video.Output(display_name="video"),
+            io.Latent.Output(display_name="latent"),
+            io.String.Output(display_name="task_id"),
+        ],
+        is_output_node=True,
+        is_deprecated=deprecated,
+    )
+
+
+class RH_ExecuteNative(io.ComfyNode):
+    @classmethod
+    def define_schema(cls):
+        return execute_schema("RH_Execute", "\u25b6\ufe0f RH Execute")
+
+    @classmethod
+    def execute(cls, config, timeout=600, params=None, extra_params=None,
+                use_high_performance=False, save_to_local=False, output_prefix="RH"):
+        dynamic = dict(extra_params or {})
+        result = ExecuteService().execute(
+            config=config,
+            params=params,
+            timeout=timeout,
+            use_high_performance=use_high_performance,
+            save_to_local=save_to_local,
+            output_prefix=output_prefix,
+            **dynamic,
+        )
+        return io.NodeOutput(*result)
 
 
 def single_upload_schema(node_id, title, source, field_names, default):
@@ -279,6 +342,7 @@ class RH_MultiInputImageNative(io.ComfyNode):
 
 
 NATIVE_NODE_CLASS_MAPPINGS = {
+    "RH_Execute": RH_ExecuteNative,
     "RH_Params2": RH_Params2Native,
     "RH_UploadImage2": RH_UploadImage2Native,
     "RH_UploadImage": RH_UploadImageNative,

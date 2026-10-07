@@ -1,4 +1,4 @@
-"""RH Upload Image 2 - multi-image uploader for a single RunningHub execution."""
+"""RH Upload Image V2 compatibility service for grouped RunningHub image uploads."""
 
 from __future__ import annotations
 
@@ -75,7 +75,7 @@ class RH_UploadImage2:
         if field_name == "custom":
             if not custom_field_name:
                 raise ValueError(
-                    f"RH Upload Image 2 row {slot} uses custom but custom_field_name is empty."
+                    f"RH Upload Image V2 row {slot} uses custom but custom_field_name is empty."
                 )
             return custom_field_name
         return field_name
@@ -91,7 +91,7 @@ class RH_UploadImage2:
 
         for row_name, row in self._iter_rows(kwargs):
             if not isinstance(row, dict):
-                raise ValueError(f"RH Upload Image 2 input {row_name} must be an object.")
+                raise ValueError(f"RH Upload Image V2 input {row_name} must be an object.")
 
             if row.get("enabled", True) is False:
                 continue
@@ -105,11 +105,11 @@ class RH_UploadImage2:
 
             node_id = str(row.get("node_id", "")).strip()
             if not node_id:
-                raise ValueError(f"RH Upload Image 2 row {slot} is missing node_id.")
+                raise ValueError(f"RH Upload Image V2 row {slot} is missing node_id.")
 
             actual_field_name = self._resolve_field_name(row, slot)
             if not actual_field_name:
-                raise ValueError(f"RH Upload Image 2 row {slot} is missing field_name.")
+                raise ValueError(f"RH Upload Image V2 row {slot} is missing field_name.")
 
             pil_image = converter._tensor_to_pil(image)
             buffer = BytesIO()
@@ -120,7 +120,7 @@ class RH_UploadImage2:
             max_size = 10 * 1024 * 1024
             if buffer_size > max_size:
                 raise ValueError(
-                    f"RH Upload Image 2 row {slot} image size "
+                    f"RH Upload Image V2 row {slot} image size "
                     f"{buffer_size / 1024 / 1024:.2f}MB exceeds 10MB limit"
                 )
 

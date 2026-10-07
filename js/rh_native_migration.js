@@ -1,6 +1,6 @@
 // Legacy workflow data adapter only. All new controls are constructed by ComfyUI.
 export const GROUPS = Object.freeze({ RH_Params2: ["param_count", 16], RH_UploadImage2: ["image_count", 12] });
-export const NATIVE_VERSION = 1;
+export const NATIVE_VERSION = 2;
 
 const scalarText = (value) => value == null ? "" : String(value);
 const slotOf = (name) => Number(String(name).match(/_(\d+)$/)?.[1] || 0);
@@ -8,11 +8,10 @@ const slotOf = (name) => Number(String(name).match(/_(\d+)$/)?.[1] || 0);
 export function isLegacyGroup(node) {
     const group = GROUPS[node.type];
     if (!group) return false;
-    if (node.type === "RH_Params2") {
-        const hasRemovedEnable = (node.inputs || []).some((input) => input.name.startsWith("param_count.enabled_")) ||
-            Object.keys(node.widgets_values_named || {}).some((name) => name.startsWith("param_count.enabled_"));
-        if (hasRemovedEnable) return true;
-    }
+    const groupName = group[0];
+    const hasRemovedEnable = (node.inputs || []).some((input) => input.name.startsWith(groupName + ".enabled_")) ||
+        Object.keys(node.widgets_values_named || {}).some((name) => name.startsWith(groupName + ".enabled_"));
+    if (hasRemovedEnable) return true;
     if (node.properties?.rh_native_ui_version === NATIVE_VERSION) return false;
     // The official group selector is serialized as a string; the oldest Params count was a number.
     return !(typeof node.widgets_values?.[0] === "string" && /^\d+$/.test(node.widgets_values[0]) &&
@@ -26,7 +25,8 @@ export function readLegacyRows(node) {
     const image = node.type === "RH_UploadImage2";
     const values = node.widgets_values || [];
     const named = node.widgets_values_named || {};
-    const hasNativeEnable = !image && (node.inputs || []).some((input) => input.name.startsWith("param_count.enabled_"));
+    const hasNativeEnable = (node.inputs || []).some((input) => input.name.startsWith(group + ".enabled_")) ||
+        Object.keys(named).some((name) => name.startsWith(group + ".enabled_"));
     const nativeValues = { ...named };
     if (hasNativeEnable && !Object.keys(nativeValues).length) {
         let valueIndex = 0;
@@ -36,17 +36,17 @@ export function readLegacyRows(node) {
         }
     }
     let rows = [];
-    if (!image && nativeValues.param_count !== undefined) {
-        const count = Number(nativeValues.param_count);
-        if (!Number.isInteger(count) || count < 1 || count > maximum) throw new Error("Invalid native RH parameter count.");
+    if (hasNativeEnable && nativeValues[group] !== undefined) {
+        const count = Number(nativeValues[group]);
+        if (!Number.isInteger(count) || count < 1 || count > maximum) throw new Error("Invalid native RH group count.");
         for (let slot = 1; slot <= count; slot++) {
             rows.push({
                 slot_id: slot,
-                enabled: nativeValues[`param_count.enabled_${slot}`] !== false,
-                node_id: nativeValues[`param_count.node_id_${slot}`],
-                field_name: nativeValues[`param_count.field_name_${slot}`],
-                custom_field_name: nativeValues[`param_count.field_name_${slot}.custom_field_name_${slot}`],
-                local_value: nativeValues[`param_count.value_${slot}`],
+                enabled: nativeValues[`${group}.enabled_${slot}`] !== false,
+                node_id: nativeValues[`${group}.node_id_${slot}`],
+                field_name: nativeValues[`${group}.field_name_${slot}`],
+                custom_field_name: nativeValues[`${group}.field_name_${slot}.custom_field_name_${slot}`],
+                local_value: image ? "" : nativeValues[`${group}.value_${slot}`],
             });
         }
     }
@@ -82,12 +82,14 @@ export function readLegacyRows(node) {
             custom_field_name: scalarText(row.custom_field_name),
             value: scalarText(row.local_value ?? row.field_value ?? ""),
         };
-        if (!image && !normalized.enabled) {
+        if (!normalized.enabled) {
             const hasLink = (node.inputs || []).some((input) => slotOf(input.name) === slot && input.link != null);
+            const defaultField = image ? "image" : "text";
             const hasContent = normalized.node_id || normalized.custom_field_name || normalized.value ||
-                (normalized.field_name && normalized.field_name !== "text") || hasLink;
+                (normalized.field_name && normalized.field_name !== defaultField) || hasLink;
             if (hasContent) {
-                throw new Error(`RH migration stopped: disabled Params 2 row ${slot} contains saved data or a connection. Enable was removed from Params 2, so this row cannot be activated silently. Open the original workflow with the previous version and either enable or clear that row first.`);
+                const label = image ? "Upload Image V2" : "Params V2";
+                throw new Error(`RH migration stopped: disabled ${label} row ${slot} contains saved data or a connection. Enable was removed, so this row cannot be activated silently. Open the original workflow with the previous version and either enable or clear that row first.`);
             }
             normalized.enabled = true;
         }
@@ -98,7 +100,7 @@ export function readLegacyRows(node) {
         ...bySlot.keys(), ...linkedSlots);
     if (count > maximum) throw new Error("RH migration stopped: saved slots exceed the supported limit.");
     for (let slot = 1; slot <= count; slot++) {
-        if (!bySlot.has(slot)) bySlot.set(slot, { slot, enabled: false, node_id: "", field_name: image ? "image" : "text", custom_field_name: "", value: "" });
+        if (!bySlot.has(slot)) bySlot.set(slot, { slot, enabled: true, node_id: "", field_name: image ? "image" : "text", custom_field_name: "", value: "" });
     }
     return { group, count, image, rows: [...bySlot.values()].sort((a, b) => a.slot - b.slot) };
 }
@@ -132,7 +134,6 @@ export function applyRowValues(node, decoded) {
         set(`field_name_${row.slot}`, actual);
         if (actual === "custom") set(`field_name_${row.slot}.custom_field_name_${row.slot}`, known ? row.custom_field_name : row.field_name);
         if (!decoded.image) set(`value_${row.slot}`, row.value);
-        if (decoded.image) set(`enabled_${row.slot}`, row.enabled);
     }
 }
 

@@ -59,12 +59,33 @@ test('native v1 Params can decode positional widget values when named values are
     assert.equal(data.rows[0].field_name, 'width');
     assert.equal(data.rows[0].value, '1024');
 });
-test('sparse images keep IDs and inactive gaps', () => {
+test('sparse images keep IDs and empty gaps without Enable state', () => {
     const data = readLegacyRows({ type: 'RH_UploadImage2', widgets_values: [
         { kind: 'rh_upload_image2', slot_id: 3, node_id: '31', field_name: 'reference' }
     ], inputs: [{ name: 'image_3', link: 1 }] });
     assert.equal(data.count, 3);
-    assert.deepEqual(data.rows.map(x => [x.slot, x.enabled]), [[1, false], [2, false], [3, true]]);
+    assert.deepEqual(data.rows.map(x => [x.slot, x.enabled]), [[1, true], [2, true], [3, true]]);
+    assert.equal(data.rows[0].node_id, '');
+});
+test('native Image V2 with Enable is detected and disabled data is not silently activated', () => {
+    const node = {
+        type: 'RH_UploadImage2',
+        inputs: [
+            { name: 'image_count', widget: { name: 'image_count' }, link: null },
+            { name: 'image_count.node_id_1', widget: { name: 'image_count.node_id_1' }, link: null },
+            { name: 'image_count.field_name_1', widget: { name: 'image_count.field_name_1' }, link: null },
+            { name: 'image_count.image_1', link: 5 },
+            { name: 'image_count.enabled_1', widget: { name: 'image_count.enabled_1' }, link: null },
+        ],
+        widgets_values_named: {
+            image_count: '1',
+            'image_count.node_id_1': '31',
+            'image_count.field_name_1': 'reference',
+            'image_count.enabled_1': false,
+        },
+    };
+    assert.equal(isLegacyGroup(node), true);
+    assert.throws(() => readLegacyRows(node), /Enable was removed/);
 });
 test('duplicate and oversized slots fail rather than silently overwrite', () => {
     assert.throws(() => readLegacyRows(legacy([{ node_id: '1', slot_id: 1 }, { node_id: '2', slot_id: 1 }])), /duplicate/);
@@ -77,8 +98,9 @@ test('input mappings preserve the single effective value and custom field path',
     assert.equal(newInputName('previous_params', 'param_count'), 'previous_params');
 });
 test('new workflows are not migrated twice', () => {
-    assert.equal(isLegacyGroup({ type: 'RH_Params2', properties: { rh_native_ui_version: 1 } }), false);
-    assert.equal(isLegacyGroup({ type: 'RH_Params2', widgets_values: ['1'], inputs: [{ name: 'param_count.value_1' }] }), false);
+    assert.equal(isLegacyGroup({ type: 'RH_Params2', properties: { rh_native_ui_version: 2 } }), false);
+    assert.equal(isLegacyGroup({ type: 'RH_Params2', properties: { rh_native_ui_version: 1 }, widgets_values: ['1'], inputs: [{ name: 'param_count.value_1' }] }), false);
+    assert.equal(isLegacyGroup({ type: 'RH_UploadImage2', properties: { rh_native_ui_version: 2 } }), false);
 });
 test('migration failure leaves original workflow untouched', () => {
     const graph = { nodes: [legacy([{ node_id: '1', slot_id: 99 }])], links: [] };

@@ -1,4 +1,4 @@
-"""Experimental RH Execute node with multi-source RH_PARAMS fan-in."""
+"""Multi-source RH_PARAMS merge service plus deprecated RH Execute 2 compatibility node."""
 
 from __future__ import annotations
 
@@ -31,7 +31,9 @@ class FlexibleRHParamsInput(dict):
 
 
 class RH_Execute2(RH_Execute):
-    """Experimental Execute node that merges multiple RH_PARAMS sources."""
+    """Deprecated compatibility node; RH_Execute now owns the V2 multi-source behavior."""
+
+    DEPRECATED = True
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -117,19 +119,19 @@ class RH_Execute2(RH_Execute):
             if group is None:
                 continue
             if not isinstance(group, (list, tuple)):
-                raise ValueError(f"RH Execute 2 input {source_name} must be an RH_PARAMS list.")
+                raise ValueError(f"RH Execute input {source_name} must be an RH_PARAMS list.")
 
             for item_index, item in enumerate(group, 1):
                 if not isinstance(item, dict):
                     raise ValueError(
-                        f"RH Execute 2 input {source_name} item {item_index} must be an object."
+                        f"RH Execute input {source_name} item {item_index} must be an object."
                     )
 
                 node_id = str(item.get("nodeId", "")).strip()
                 field_name = str(item.get("fieldName", "")).strip()
                 if not node_id or not field_name:
                     raise ValueError(
-                        f"RH Execute 2 input {source_name} item {item_index} "
+                        f"RH Execute input {source_name} item {item_index} "
                         "must contain nodeId and fieldName."
                     )
 
@@ -141,7 +143,7 @@ class RH_Execute2(RH_Execute):
                 if key in key_to_index:
                     previous_source = key_to_source[key]
                     print(
-                        "Warning: RH Execute 2 parameter override: "
+                        "Warning: RH Execute parameter override: "
                         f"Node {node_id}.{field_name} from {previous_source} "
                         f"is replaced by {source_name}."
                     )

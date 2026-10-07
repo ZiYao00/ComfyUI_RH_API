@@ -1,4 +1,4 @@
-"""RH Params 2 - multi-parameter builder with external value overrides."""
+"""RH Params V2 compatibility parser and multi-parameter builder."""
 
 from __future__ import annotations
 
@@ -192,19 +192,19 @@ class RH_Params2:
             if not node_id and not has_external_value and field_value in ("", None):
                 continue
             if not node_id:
-                raise ValueError(f"RH Params 2 row {slot} is missing node_id.")
+                raise ValueError(f"RH Params V2 row {slot} is missing node_id.")
 
             if field_name == "custom":
                 if not custom_field_name:
                     raise ValueError(
-                        f"RH Params 2 row {slot} uses custom but custom_field_name is empty."
+                        f"RH Params V2 row {slot} uses custom but custom_field_name is empty."
                     )
                 actual_field_name = custom_field_name
             else:
                 actual_field_name = field_name
 
             if not actual_field_name:
-                raise ValueError(f"RH Params 2 row {slot} is missing field_name.")
+                raise ValueError(f"RH Params V2 row {slot} is missing field_name.")
 
             params.append(
                 {

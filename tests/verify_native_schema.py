@@ -34,8 +34,9 @@ def main():
     definitions = {key: cls.GET_NODE_INFO_V1() for key, cls in native.NATIVE_NODE_CLASS_MAPPINGS.items()}
 
     class NativeSchemaTests(unittest.TestCase):
-        def test_all_nine_nodes_are_real_v3_and_keep_output_contracts(self):
+        def test_all_ten_nodes_are_real_v3_and_keep_output_contracts(self):
             expected = {
+                "RH_Execute": ["IMAGE", "IMAGE", "STRING", "AUDIO", "VIDEO", "LATENT", "STRING"],
                 "RH_Params2": ["RH_PARAMS"], "RH_UploadImage2": ["RH_PARAMS"],
                 "RH_UploadImage": ["STRING", "RH_PARAMS"], "RH_UploadVideo": ["STRING", "RH_PARAMS"],
                 "RH_UploadAudio": ["STRING", "RH_PARAMS"], "RH_UploadFile": ["RH_PARAM"],
@@ -60,6 +61,32 @@ def main():
                     self.assertEqual(config["widgetType"], "STRING")
                     self.assertNotIn(f"local_value_{slot}", required)
                     self.assertNotIn(f"enabled_{slot}", required)
+
+        def test_image_v2_has_no_enable_control(self):
+            group = definitions["RH_UploadImage2"]["input"]["required"]["image_count"]
+            for option in group[1]["options"]:
+                required = option["inputs"]["required"]
+                self.assertFalse(any(name.startswith("enabled_") for name in required))
+
+        def test_execute_uses_native_autogrow_and_keeps_fixed_controls_native(self):
+            execute = definitions["RH_Execute"]["input"]
+            self.assertEqual(execute["optional"]["extra_params"][0], "COMFY_AUTOGROW_V3")
+            names = execute["optional"]["extra_params"][1]["template"]["names"]
+            self.assertEqual(names[0], "params_2")
+            self.assertEqual(names[-1], "params_16")
+            for name in ("timeout", "use_high_performance", "save_to_local", "output_prefix"):
+                self.assertIn(name, execute["required"])
+
+        def test_execute_native_delegates_to_v2_merge_behavior(self):
+            base = [{"nodeId": "1", "fieldName": "text", "fieldValue": "base"}]
+            extra = [{"nodeId": "1", "fieldName": "text", "fieldValue": "override"}]
+            fake = (object(), object(), "", None, None, {"samples": object()}, "task")
+            with patch.object(native.ExecuteService, "execute", return_value=fake) as execute:
+                result = native.RH_ExecuteNative.execute({}, params=base, extra_params={"params_2": extra})
+                self.assertEqual(result.result[-1], "task")
+                self.assertEqual(execute.call_args.kwargs["params"], base)
+                self.assertEqual(execute.call_args.kwargs["params_2"], extra)
+                self.assertFalse(execute.call_args.kwargs["save_to_local"])
 
         def test_audio_still_accepts_a_path_video_still_accepts_video(self):
             self.assertEqual(definitions["RH_UploadAudio"]["input"]["required"]["audio_path"][0], "STRING")
@@ -92,17 +119,17 @@ def main():
                     native.RH_UploadImage2Native.execute({}, {"image_count": "2", "node_id_1": "1", "image_1": object(), "image_2": object()})
                 upload.assert_not_called()
 
-        def test_image_group_routing_and_disabled_state(self):
+        def test_image_group_routing_without_enable_state(self):
             images = (object(), object())
             with patch.object(native.MultiImageUploader, "upload", return_value=([],)) as upload:
                 native.RH_UploadImage2Native.execute({}, {
                     "image_count": "2", "node_id_1": "1", "image_1": images[0],
                     "field_name_1": {"field_name_1": "custom", "custom_field_name_1": "reference_image"},
-                    "node_id_2": "2", "image_2": images[1], "enabled_2": False,
+                    "node_id_2": "2", "image_2": images[1],
                 })
                 values = upload.call_args.kwargs
                 self.assertEqual(values["image_meta_1"]["custom_field_name"], "reference_image")
-                self.assertFalse(values["image_meta_2"]["enabled"])
+                self.assertTrue(values["image_meta_2"]["enabled"])
                 self.assertIs(values["image_1"], images[0])
 
         def test_single_uploads_delegate_without_changing_protocol(self):
@@ -133,6 +160,21 @@ def main():
             self.assertEqual(result, [{"nodeId": "12", "fieldName": "prompt", "fieldValue": "hello"},
                                       {"nodeId": "13", "fieldName": "steps", "fieldValue": "0"}])
 
+        def test_real_backend_expands_execute_autogrow(self):
+            from comfy_api.latest import _io
+            base = [{"nodeId": "1", "fieldName": "text", "fieldValue": "base"}]
+            extra = [{"nodeId": "2", "fieldName": "seed", "fieldValue": "7"}]
+            flat = {
+                "config": {"api_key": "test-only"}, "timeout": 600, "params": base,
+                "extra_params.params_2": extra, "use_high_performance": False,
+                "save_to_local": False, "output_prefix": "RH",
+            }
+            finalized, _, v3_data = _io.get_finalized_class_inputs(native.RH_ExecuteNative.INPUT_TYPES(), flat)
+            self.assertIn("extra_params.params_2", finalized["optional"])
+            nested = _io.build_nested_inputs(flat, v3_data)
+            self.assertEqual(nested["params"], base)
+            self.assertEqual(nested["extra_params"]["params_2"], extra)
+
         def test_real_backend_expands_image_group_and_omitted_optional_image(self):
             from comfy_api.latest import _io
             flat = {"config": {"api_key": "test-only", "base_url": "https://invalid.example"}, "image_count": "1", "image_count.node_id_1": "12", "image_count.field_name_1": "image"}
@@ -147,6 +189,12 @@ def main():
             for name, cls in native.NATIVE_NODE_CLASS_MAPPINGS.items():
                 self.assertIs(module.NODE_CLASS_MAPPINGS[name], cls)
                 cls.VALIDATE_CLASS()
+            self.assertIs(module.NODE_CLASS_MAPPINGS["RH_Execute"], native.RH_ExecuteNative)
+            self.assertTrue(module.NODE_CLASS_MAPPINGS["RH_Execute2"].DEPRECATED)
+            self.assertEqual(module.NODE_DISPLAY_NAME_MAPPINGS["RH_Execute"], "▶️ RH Execute")
+            self.assertEqual(module.NODE_DISPLAY_NAME_MAPPINGS["RH_Params2"], "⚙️ RH Params V2")
+            self.assertEqual(module.NODE_DISPLAY_NAME_MAPPINGS["RH_UploadImage2"], "📤 RH Upload Image V2")
+            self.assertEqual(module.NODE_DISPLAY_NAME_MAPPINGS["RH_UploadImage"], "📤 RH Upload Image")
             self.assertNotIn("RH_UploadMask", module.NODE_CLASS_MAPPINGS)
             self.assertEqual(module.WEB_DIRECTORY, "js")
 
@@ -163,7 +211,7 @@ def main():
     print("DynamicGroup available:", hasattr(io, "DynamicGroup"))
     if args.export:
         # Test-only source/sink definitions are used in an isolated frontend, not registered in the user's server.
-        for type_name in ("STRING", "INT", "FLOAT", "BOOLEAN", "IMAGE", "VIDEO", "AUDIO"):
+        for type_name in ("STRING", "INT", "FLOAT", "BOOLEAN", "IMAGE", "VIDEO", "AUDIO", "RH_PARAMS"):
             name = "RH_Test_" + type_name
             definitions[name] = {"name": name, "display_name": name, "category": "RH UI Tests", "input": {"required": {}},
                                  "output": [type_name], "output_name": [type_name], "output_is_list": [False], "output_node": False}

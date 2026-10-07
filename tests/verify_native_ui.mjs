@@ -1,22 +1,31 @@
-/** Real installed-frontend tests, with an isolated browser and a read-only proxy.
- * No npm dependencies, no RH requests, no writes to the running ComfyUI service.
+/** Real installed-frontend tests, served directly from the installed frontend package.
+ * No npm dependencies, no RH requests, and no running ComfyUI backend required.
  * Run after verify_native_schema.py --export. Browser data stays in .ui-test/.
  */
 import http from 'node:http';
 import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { readFile, writeFile, mkdir, access } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, access, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, '.ui-test');
-const UPSTREAM = 'http://127.0.0.1:8188';
+const FRONTEND_ROOT = process.env.RH_UI_FRONTEND_ROOT ||
+    'G:/AIGC/ComfyUI/python_embeded/Lib/site-packages/comfyui_frontend_package/static';
 await mkdir(OUT, { recursive: true });
 const definitions = JSON.parse(await readFile(path.join(OUT, 'native-object-info.json'), 'utf8'));
-const coreExtensions = (await (await fetch(UPSTREAM + '/extensions', { signal: AbortSignal.timeout(5000) })).json())
-    .filter(url => /\/core\/(widgetInputs|rerouteNode)\.js$/.test(url));
+const coreExtensions = ['/extensions/core/widgetInputs.js'];
+await access(path.join(FRONTEND_ROOT, 'index.html'));
+await access(path.join(FRONTEND_ROOT, 'scripts', 'app.js'));
+await access(path.join(FRONTEND_ROOT, 'extensions', 'core', 'widgetInputs.js'));
 const events = [], requests = [], blocked = [];
+const mime = new Map([
+    ['.html', 'text/html; charset=utf-8'], ['.js', 'text/javascript; charset=utf-8'],
+    ['.css', 'text/css; charset=utf-8'], ['.json', 'application/json; charset=utf-8'],
+    ['.svg', 'image/svg+xml'], ['.png', 'image/png'], ['.jpg', 'image/jpeg'], ['.jpeg', 'image/jpeg'],
+    ['.ico', 'image/x-icon'], ['.woff', 'font/woff'], ['.woff2', 'font/woff2'], ['.webp', 'image/webp'],
+]);
 const json = (res, value, status = 200) => {
     res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' });
     res.end(JSON.stringify(value));
@@ -43,6 +52,7 @@ const server = http.createServer(async (req, res) => {
         if (apiPath === '/userdata') return json(res, []);
         if (apiPath.startsWith('/userdata/')) return json(res, { error: 'not found' }, 404);
         if (apiPath === '/queue') return json(res, { queue_running: [], queue_pending: [] });
+        if (apiPath === '/jobs') return json(res, { jobs: [] });
         if (apiPath === '/history') return json(res, {});
         if (apiPath === '/prompt') return json(res, { exec_info: { queue_remaining: 0 } });
         if (apiPath === '/workflow_templates') return json(res, {});
@@ -53,13 +63,21 @@ const server = http.createServer(async (req, res) => {
             res.writeHead(200, { 'content-type': 'text/javascript', 'cache-control': 'no-store' });
             return res.end(await readFile(path.join(ROOT, 'js', filename)));
         }
-        // Only static files and read-only environment metadata may reach upstream.
-        const staticFile = url.pathname === '/' || /^\/(assets|scripts|lib|extensions|locales|fonts|images|icons|templates)\//.test(url.pathname) || /\.(js|css|json|svg|png|ico|woff2?|html)$/.test(url.pathname);
-        const metadata = ['/system_stats', '/features', '/embeddings'].includes(apiPath);
-        if (!staticFile && !metadata) return json(res, {}, 404);
-        const upstream = await fetch(UPSTREAM + req.url, { signal: AbortSignal.timeout(12000) });
-        res.writeHead(upstream.status, { 'content-type': upstream.headers.get('content-type') || 'application/octet-stream', 'cache-control': 'no-store' });
-        res.end(Buffer.from(await upstream.arrayBuffer()));
+        if (url.pathname === '/user.css') { res.writeHead(200, { 'content-type': 'text/css; charset=utf-8' }); return res.end(''); }
+        if (apiPath === '/system_stats') return json(res, { system: {}, devices: [] });
+        if (apiPath === '/features') return json(res, {});
+        if (apiPath === '/embeddings') return json(res, []);
+        const staticFile = url.pathname === '/' || /^\/(assets|scripts|lib|extensions|locales|fonts|images|icons|templates|cursor)\//.test(url.pathname) || /\.(js|css|json|svg|png|ico|woff2?|html|webp)$/.test(url.pathname);
+        if (!staticFile) return json(res, {}, 404);
+        const root = path.resolve(FRONTEND_ROOT);
+        const relative = url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname).replace(/^\/+/, '');
+        let file = path.resolve(root, relative);
+        if (file !== root && !file.startsWith(root + path.sep)) return json(res, { error: 'invalid static path' }, 403);
+        const info = await stat(file);
+        if (info.isDirectory()) file = path.join(file, 'index.html');
+        const body = await readFile(file);
+        res.writeHead(200, { 'content-type': mime.get(path.extname(file).toLowerCase()) || 'application/octet-stream', 'cache-control': 'no-store' });
+        res.end(body);
     } catch (error) {
         events.push({ proxy: req.url, error: String(error) });
         json(res, { error: 'Read-only test proxy failed' }, 502);
@@ -170,7 +188,7 @@ try {
     const zoomed = await cdp('Page.captureScreenshot', { format: 'png' });
     await writeFile(path.join(OUT, 'native-nodes-zoom60.png'), Buffer.from(zoomed.data, 'base64'));
     result.diagnostics.visual = visual;
-    console.log(JSON.stringify({ frontend: 'installed ComfyUI served via read-only proxy', passes: result.passes, failures: result.failures }, null, 2));
+    console.log(JSON.stringify({ frontend: 'installed ComfyUI frontend package served directly in isolation', passes: result.passes, failures: result.failures }, null, 2));
     await writeFile(path.join(OUT, 'ui-result.json'), JSON.stringify({ result, events, blocked, requests }, null, 2));
     if (result.failures?.length) throw new Error('UI assertions failed: ' + result.failures.join('; '));
 } catch (error) {

@@ -222,6 +222,25 @@ class RHClientTests(unittest.TestCase):
             client.create_task("12345", is_ai_app=True, instance_type="ultra")
         self.assertEqual(session.calls, [])
 
+    def test_confirmed_creation_calls_journal_hook_once(self):
+        session = RecordingSession({"code": 0, "data": {"taskId": "recorded-id"}})
+        client = self.module.RHClient("example", "https://www.runninghub.ai", session=session)
+        written = []
+        result = client.create_task(
+            "workflow-1", instance_type="plus", on_task_created=written.append
+        )
+        self.assertEqual(result, "recorded-id")
+        self.assertEqual(written, ["recorded-id"])
+        self.assertEqual(len(session.calls), 1)
+
+    def test_failed_journal_hook_does_not_retry_or_lose_confirmed_id(self):
+        session = RecordingSession({"code": 0, "data": {"taskId": "confirmed-id"}})
+        client = self.module.RHClient("example", "https://www.runninghub.ai", session=session)
+        def unavailable(_task):
+            raise OSError("cannot write record")
+        self.assertEqual(client.create_task("workflow-1", on_task_created=unavailable), "confirmed-id")
+        self.assertEqual(len(session.calls), 1)
+
     def test_cancel_task_is_centralized_in_client(self):
         session = RecordingSession({"code": 0, "msg": "success", "data": None})
         client = self.module.RHClient("key", "https://rh.example", session=session)

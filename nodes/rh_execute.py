@@ -6,6 +6,7 @@ Simplified execution with automatic progress tracking and output handling
 # Import shared logic from rh_utils
 from .rh_utils import _monitor_task, _get_outputs, _create_placeholder_image, _create_placeholder_latent
 from .rh_client import RHClient, RHTaskSubmissionUncertainError
+from .rh_task_journal import record_created_task
 from .rh_workflow_schema import RHWorkflowInspection, validate_node_info_list
 
 try:
@@ -155,6 +156,9 @@ class RH_Execute:
         # Legacy BOOL calls retain the same positional behavior.
         selected = client.resolve_instance_type(instance_type, use_high_performance)
         options = {"instance_type": selected} if instance_type is not None else {}
+        options["on_task_created"] = lambda confirmed_id: record_created_task(
+            confirmed_id, config, instance_type=selected, origin="execute"
+        )
         task_id = client.create_task(
             workflow_or_app_id=config["workflow_or_app_id"],
             params=params,

@@ -32,6 +32,26 @@ Add `RH Execute`, connect `RH Config.config`, and queue the prompt.
 
 `RH Execute` waits for the RH task, preserves/stages the returned files, converts supported files to ComfyUI values, and returns the `task_id`. Its RH_PARAMS fan-in is one native Autogrow chain: by default only `params` is visible; connecting it reveals `params_1`, then `params_2`, and so on through `params_15` (16 sources total). Later sources override duplicate node/field pairs, matching the former Execute 2 behavior. Saved graph workflows from the old Execute layouts are migrated automatically; old API-format prompts should be re-exported from the migrated graph.
 
+### 3C. Recover a created task without submitting another paid run
+
+After RunningHub confirms task creation, RH Execute and RH Batch Execute
+record the Task ID in the plugin-local `.rh-task-history` folder. Files
+are named by a digest and contain a readable `taskId`. They are ignored
+by Git; they do not include your API key, prompt or media files.
+
+If generation monitoring times out or ComfyUI closes after submission,
+open the latest local JSON record and copy its `taskId`. Use your existing
+**RH Task Manager** node with **Get Status**, or **RH Download Results**
+with the same RH Config and the saved Task ID. This checks/downloads
+the existing task instead of creating a new paid task. Never restart the
+RH Execute node solely to retrieve an already-created result.
+
+A transport failure before RH returns a Task ID remains uncertain and
+cannot be automatically reconciled; inspect the RH website's task
+history before considering a manual retry. A batch now stops on its first
+failed submission and reports all earlier confirmed IDs rather than
+continuing blindly. This is a deliberate safety change.
+
 ### 3B. Choose the RunningHub execution instance
 
 `RH Execute` now uses `Instance Type` with four choices:

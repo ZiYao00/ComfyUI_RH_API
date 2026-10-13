@@ -73,6 +73,8 @@ class TaskSubmissionTests(unittest.TestCase):
 
         requests.post = post
         module = load_rh_execute(requests)
+        from unittest.mock import Mock
+        module.record_created_task = Mock()
         task_id = module.RH_Execute()._create_task(
             {
                 "api_key": "key",
@@ -85,7 +87,32 @@ class TaskSubmissionTests(unittest.TestCase):
         )
 
         self.assertEqual(task_id, "task-123")
+        module.record_created_task.assert_called_once()
         self.assertEqual(len(calls), 1)
+
+    def test_created_task_is_recorded_before_monitoring_failure(self):
+        from unittest.mock import Mock
+        requests = make_requests_stub()
+        requests.calls = []
+
+        def post(*args, **kwargs):
+            requests.calls.append((args, kwargs))
+            return FakeResponse({"code": 0, "data": {"taskId": "recoverable-task"}})
+        requests.post = post
+        module = load_rh_execute(requests)
+        module.record_created_task = Mock()
+        def monitor_fail(*args, **kwargs):
+            raise RuntimeError("temporary status failure")
+        module._monitor_task = monitor_fail
+
+        with self.assertRaisesRegex(RuntimeError, "temporary status failure"):
+            module.RH_Execute().execute({
+                "api_key": "[REDACTED]", "base_url": "https://www.runninghub.ai",
+                "workflow_or_app_id": "sample-workflow"
+            }, params=[])
+        self.assertEqual(len(requests.calls), 1)
+        module.record_created_task.assert_called_once()
+        self.assertEqual(module.record_created_task.call_args.args[0], "recoverable-task")
 
     def test_transport_failure_is_not_retried(self):
         requests = make_requests_stub()

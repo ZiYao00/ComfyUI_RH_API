@@ -162,6 +162,20 @@ field names and status only. Keep its output free of raw prompt values.
 V3 前端的创建/保存/重载、上版 Execute/Execute2 图和多参数连接。
 在真实账号上实际生成 plus/ultra 任务尚未授权测试。
 
+### 2026-10-13 B2：任务 ID 记录与人工恢复
+
+RH 创建任务并返回 Task ID 后，插件会立即将其原子写入
+`.rh-task-history`（已加入 Git 忽略）。记录文件不会保存
+API Key、Prompt 或素材。若生成后轮询失败，打开最近的 JSON，
+复制 `taskId`，使用已有的 `RH Task Manager` 查询状态，
+或使用 `RH Download Results` 下载原任务结果；**不要为取回结果
+再次运行 RH Execute，否则可能重复扣费**。
+
+批量任务遇到首次明确失败后即停止，错误中保留此前确认的
+Task ID，避免后续付费任务继续创建。云端提交后无法确认 Task ID
+时，仍需人工查 RH 任务列表；不自动重试。当前只有模拟请求与
+本地文件测试，尚未进行用户账号的真实付费任务恢复验收。
+
 ## 6. 官方依据
 
 - [ComfyUI V3 迁移、MultiType 与动态输入](https://docs.comfy.org/custom-nodes/v3_migration)

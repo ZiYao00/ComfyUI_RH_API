@@ -307,6 +307,38 @@ Tests: `node --test tests/native_migration.test.mjs`,
 No paid Plus/Ultra/default API submission has been made; mock payload
 tests are not real permission or billing verification.
 
+### Confirmed Task ID journal and batch recovery (2026-10-13; stage B2)
+
+All confirmed RH task-create responses can now invoke a callback immediately
+after the API reports a `taskId`, **before** polling or result conversion.
+`RH_Execute` and `RH_BatchExecute` connect it to the local
+`nodes/rh_task_journal.py` recorder. Each task is saved as an atomically
+replaced JSON file under ignored `.rh-task-history/`, with the returned task
+ID, workflow/app ID, normalized base URL, selected instance, operation,
+submission timestamp and `status=submitted`. The recorder intentionally
+does not store API keys, prompt values, nodeInfoList, media URLs or full
+raw RH responses. Journal files remain **local only**.
+
+The create-task POST remains a **single attempt**. If it succeeds but the
+journal write fails, the task ID is still returned, a warning is printed,
+and the callback does not cause an automatic retry. If the transport fails
+before the task ID is known, the original uncertain-submission exception
+still requires an operator to check the RH task list. No fabricated ID is
+written. If monitoring or conversion fails after successful task creation,
+the recorded ID can be pasted into the existing `RH Task Manager` (Get
+Status) or `RH Download Results` node for manual retrieval **without
+resubmitting the paid Execute task**. There is no automatic resume or retry.
+
+`RH_BatchExecute` records each confirmed task as soon as it is returned.
+An uncertain submission stops the batch immediately; a definite error
+now also stops subsequent submissions, raising a visible error with the
+already-confirmed task IDs. This intentionally replaces the previous
+silent continue / successful-looking partial completion behavior. Those
+IDs remain available in the local journal when the batch output fails.
+
+Tests use fake responses and temporary journal directories; no RH paid
+tasks have been created to exercise these paths in the user's live account.
+
 ## 12. Deferred follow-up backlog
 
 The current maintenance cycle is intentionally closed without forcing tests that the present environment cannot run. The following items are deferred rather than treated as release blockers:

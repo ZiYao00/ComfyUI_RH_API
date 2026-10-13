@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import io
 import json
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 import requests
 
@@ -102,9 +102,12 @@ class RHClient:
         use_high_performance: bool = False,
         timeout: int = 30,
         instance_type: Optional[str] = None,
+        on_task_created: Optional[Callable[[str], None]] = None,
     ) -> str:
         """Create one RH task with a single safe POST attempt."""
         selected_instance = self.resolve_instance_type(instance_type, use_high_performance)
+        if on_task_created is not None and not callable(on_task_created):
+            raise ValueError("on_task_created must be callable.")
         if is_ai_app and instance_type is not None and selected_instance != "auto":
             raise ValueError("Explicit instance_type is not yet supported for RH AI Apps.")
         params = params or []
@@ -152,6 +155,13 @@ class RHClient:
         if result.get("code") == 0:
             task_id = (result.get("data") or {}).get("taskId")
             if task_id:
+                if on_task_created is not None:
+                    try:
+                        on_task_created(str(task_id))
+                    except Exception:
+                        # A confirmed paid task must not be retried because
+                        # an optional local journal write failed.
+                        print("Warning: RH task ID journal write failed; note the displayed Task ID for recovery.")
                 return task_id
             raise RHTaskSubmissionUncertainError(
                 "RunningHub reported create-task success but returned no taskId. "

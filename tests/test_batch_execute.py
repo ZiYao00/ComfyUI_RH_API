@@ -89,6 +89,60 @@ class BatchExecuteTests(unittest.TestCase):
         self.assertEqual(result[0], "sample-1,sample-2")
         self.assertEqual([call["instance_type"] for call in calls], ["plus", "plus"])
 
+    def test_definite_failure_stops_batch_and_preserves_previous_ids(self):
+        class Uncertain(RuntimeError):
+            pass
+
+        calls = []
+
+        class FakeClient:
+            def __init__(self, api_key, base_url):
+                pass
+
+            def create_task(self, **kwargs):
+                calls.append(kwargs)
+                if len(calls) == 2:
+                    raise ValueError("failed on item two")
+                return f"task-{len(calls)}"
+
+        module = load_batch_module(FakeClient, Uncertain)
+        with self.assertRaisesRegex(RuntimeError, "task-1") as context:
+            module.RH_BatchExecute().batch_execute(
+                {"api_key": "example", "base_url": "https://www.runninghub.ai"},
+                "workflow-1", [[{"nodeId": "1"}], [{"nodeId": "2"}], [{"nodeId": "3"}]],
+            )
+        self.assertIn("item 2/3", str(context.exception))
+        self.assertEqual(len(calls), 2)
+
+    def test_journal_hook_receives_confirmed_batch_ids_with_actual_workflow_id(self):
+        from unittest.mock import Mock
+
+        class Uncertain(RuntimeError):
+            pass
+
+        class FakeClient:
+            def __init__(self, api_key, base_url):
+                pass
+
+            def create_task(self, **kwargs):
+                kwargs["on_task_created"]("task-confirmed")
+                return "task-confirmed"
+
+        module = load_batch_module(FakeClient, Uncertain)
+        module.record_created_task = Mock()
+        cfg = {
+            "api_key": "example",
+            "base_url": "https://www.runninghub.ai",
+            "workflow_or_app_id": "different-from-batch",
+        }
+        result = module.RH_BatchExecute().batch_execute(cfg, "actual-batch-workflow", [[]], instance_type="plus")
+        self.assertEqual(result[0], "task-confirmed")
+        args, kwargs = module.record_created_task.call_args
+        self.assertEqual(args[0], "task-confirmed")
+        self.assertEqual(args[1]["workflow_or_app_id"], "actual-batch-workflow")
+        self.assertEqual(kwargs["instance_type"], "plus")
+        self.assertEqual(kwargs["origin"], "batch")
+
     def test_uncertain_submission_stops_remaining_batch(self):
         class Uncertain(RuntimeError):
             pass

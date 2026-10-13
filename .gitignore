@@ -11,3 +11,6 @@ __pycache__/
 
 # Isolated UI-test browser profile, schemas and screenshots.
 .ui-test/
+
+# Local confirmed task IDs; never publish user task history.
+.rh-task-history/

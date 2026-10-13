@@ -222,6 +222,7 @@ ComfyUI 后端及云端视频生成已完成验收。
 ```bash
 python -B tests/probe_live_8190.py
 node tests/probe_live_ui_8190.mjs
+node tests/probe_live_official_8190.mjs
 ```
 
 **8190 真后端：PASS。** `/object_info` 确认 Execute、Inspect、
@@ -238,9 +239,8 @@ Params V2、Upload Image V2、Download、Batch 等真实注册，
 直接调用官方 `app.loadGraphData` 时，测试环境的
 CanvasStore 提示 `getCanvas: canvas is null`。
 为避免修改第三方插件/前端，使用 `app.graph.configure`
-完成本轮快照恢复验收；**不要把它视为 8190 官方
-Save/Open/F5 完整流程 PASS**。隔离前端工作流加载测试
-仍是另一个独立的 PASS 证据。
+完成这套无活动工作流的快照验收；该脚本本身不代表
+官方 Save/Open/F5 完整流程。
 
 `nodes/rh_multi_param.py` 虽有 `RH_MultiParams` 源码和 C3
 单元测试，但**未出现在主插件 NODE_CLASS_MAPPINGS**；
@@ -254,9 +254,24 @@ Save/Open/F5 完整流程 PASS**。隔离前端工作流加载测试
 验证所有归档条目可读取后，仅将原目录送入 Windows 回收站，
 未永久删除归档或更改主项目。
 
-**仍待真实验收：** 用户主动在 8190 打开旧工作流的完整
-Save/Open/F5、实际 RH Plus 云端任务与原始 MP4/VIDEO 下载。
-不允许自动重试有可能计费的 create-task 请求。
+**8190 RH 官方工作流生命周期：4 项 PASS。**
+新增 `tests/probe_live_official_8190.mjs` 利用当前已安装的
+WorkspaceKit Playwright 依赖，在已启动的 8190 浏览器使用
+测试专用的 `__WK_TEST__` 文件夹与真实官方界面验证：
+新 RH Execute 的 Plus、视频帧模式、Inspector 连线经 Open 恢复；
+通过官方顶部 Save 保存 Ultra；F5 后再 Open 参数及连线保持；
+旧布尔 `true` 迁移为 Plus，同时保留 Timeout、Prefix 和连线。
+两个独立合成测试工作流最终均通过 `/workspace2/trash/move`
+进入**测试包回收站**。首次运行用新建的目录导致侧边栏
+未能发现文件，第二次程序化修改未先进入 ChangeTracker；
+已调整**测试流程**并最终 PASS，未修改 RH 生产代码。
+WorkspaceKit 本身的官方 Save/Open/F5 与 Undo/Redo
+回归也在 8190 通过。
+
+**仍待实际业务验收：** 用户已有真实旧工作流与复杂子图的
+人工检查、RH 账号的 Plus/Ultra 付费任务、实际 MP4/VIDEO
+下载及其编辑/剪辑节点链。**不得**因下载/轮询失败而
+重新提交可能扣费的 RH Execute。
 
 ## 6. 官方依据
 

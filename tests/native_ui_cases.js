@@ -80,24 +80,61 @@ const size = [...params.size];
 set(params, 'param_count.value_1', 'hello-world');
 check(params.size.every((n, i) => n === size[i]), 'Typing a Value preserves width and height');
 
-set(images, 'image_count', '3');
+check(widget(images, 'image_count')?.hidden === true, 'Upload Image V2 hides Image Count in native widget visibility');
+check(widget(images, 'image_count')?.value === '1' && images.inputs.some(i => i.name === 'image_count.image_1'), 'Upload Image V2 initially shows one IMAGE port');
+const imageSource1 = create('RH_Test_IMAGE', [20, 420]);
+check(!!imageSource1.connect(0, images, images.inputs.findIndex(i => i.name === 'image_count.image_1')), 'Image 1 accepts an IMAGE source');
+await wait();
+check(widget(images, 'image_count').value === '2' && images.inputs.some(i => i.name === 'image_count.image_2'), 'Connecting Image 1 automatically reveals Image 2');
+set(images, 'image_count.node_id_1', '81');
+const imageSource2 = create('RH_Test_IMAGE', [20, 470]);
+check(!!imageSource2.connect(0, images, images.inputs.findIndex(i => i.name === 'image_count.image_2')), 'Image 2 accepts an IMAGE source');
+await wait();
+check(widget(images, 'image_count').value === '3' && images.inputs.some(i => i.name === 'image_count.image_3'), 'Connecting Image 2 automatically reveals Image 3');
+set(images, 'image_count.node_id_2', '82');
 set(images, 'image_count.node_id_3', '83');
 set(images, 'image_count.field_name_3', 'custom');
 set(images, 'image_count.field_name_3.custom_field_name_3', 'reference_image');
+const imageSource3 = create('RH_Test_IMAGE', [20, 520]);
+check(!!imageSource3.connect(0, images, images.inputs.findIndex(i => i.name === 'image_count.image_3')), 'Image 3 accepts an IMAGE source');
 await wait();
+check(widget(images, 'image_count').value === '4' && images.inputs.some(i => i.name === 'image_count.image_4'), 'Connecting Image 3 reveals one unused Image 4 port');
 const imageGaps = images.widgets.filter(w => w._rhGroupGap === true);
-check(imageGaps.length === 2 && imageGaps.every(w => w.computedHeight === 4 && w.serialize === false), 'Three Image rows create two actual 4px non-serializing spacers');
-const imageSource = create('RH_Test_IMAGE', [20, 520]);
-let imageIndex = images.inputs.findIndex(i => i.name === 'image_count.image_3');
-check(!!imageSource.connect(0, images, imageIndex), 'Image V2 row accepts a native IMAGE connection');
-set(images, 'image_count', '2');
-check(widget(images, 'image_count').value === '2' && !widget(images, 'image_count.node_id_3'), 'Reducing Image count hides the removed row without a dialog');
-set(images, 'image_count', '3');
-check(widget(images, 'image_count.node_id_3')?.value === '83', 'Re-expanding Image V2 restores hidden mapping values');
-check(widget(images, 'image_count.field_name_3.custom_field_name_3')?.value === 'reference_image', 'Re-expanding Image V2 restores hidden custom fields');
-check(images.inputs.find(i => i.name === 'image_count.image_3')?.link != null, 'Re-expanding Image V2 restores hidden IMAGE connections');
+check(imageGaps.length === 3 && imageGaps.every(w => w.computedHeight === 4 && w.serialize === false), 'Four Image rows retain three non-serializing 4px gaps');
+images.disconnectInput(images.inputs.findIndex(i => i.name === 'image_count.image_2'));
+await wait();
+check(widget(images, 'image_count').value === '4' && images.inputs.find(i => i.name === 'image_count.image_3')?.link != null, 'Disconnecting Image 2 does not shift or sever Image 3');
+check(widget(images, 'image_count.node_id_3')?.value === '83' && widget(images, 'image_count.field_name_3.custom_field_name_3')?.value === 'reference_image', 'Sparse image routes retain their own Node ID and custom Field');
+const vacantImages = create('RH_UploadImage2', [1350, 70]);
+const vacantSource = create('RH_Test_IMAGE', [1360, 440]);
+check(!!vacantSource.connect(0, vacantImages, vacantImages.inputs.findIndex(i => i.name === 'image_count.image_1')), 'Temporary Image V2 test source connects');
+await wait();
+check(widget(vacantImages, 'image_count').value === '2', 'Unconfigured image connection still grows the next port');
+vacantImages.disconnectInput(vacantImages.inputs.findIndex(i => i.name === 'image_count.image_1'));
+await wait();
+check(widget(vacantImages, 'image_count').value === '1' && !vacantImages.inputs.some(i => i.name === 'image_count.image_2'), 'Disconnecting an unconfigured trailing image safely shrinks the port count');
+app.graph.remove(vacantImages);
+app.graph.remove(vacantSource);
+
+// Exercise all supported dynamic slots. The 12th connection is a hard cap,
+// not an invitation to create an unsupported 13th graph socket.
+const limitImages = create('RH_UploadImage2', [1350, 70]);
+const limitSources = [];
+for (let slot = 1; slot <= 12; slot++) {
+    const src = create('RH_Test_IMAGE', [1360, 100 + 35 * slot]);
+    limitSources.push(src);
+    const inputIndex = limitImages.inputs.findIndex(i => i.name === `image_count.image_${slot}`);
+    check(inputIndex >= 0 && !!src.connect(0, limitImages, inputIndex), `Image ${slot} connects at the native capacity limit`);
+    await wait();
+}
+check(widget(limitImages, 'image_count').value === '12' &&
+    limitImages.inputs.filter(i => /^image_count\.image_\d+$/.test(i.name)).length === 12 &&
+    !limitImages.inputs.some(i => i.name === 'image_count.image_13'), 'Autogrow never exposes more than 12 IMAGE sockets');
+app.graph.remove(limitImages);
+for (const src of limitSources) app.graph.remove(src);
 
 const paramsId = params.id;
+const imagesId = images.id;
 const executeId = execute.id;
 const saved = structuredClone(app.graph.serialize());
 diagnostics.saved = { paramsId, sourceId: source.id, nodes: saved.nodes.map(n => ({ id: n.id, type: n.type })) };
@@ -156,6 +193,10 @@ check(execute.inputs.find(i => i.name === 'params.params_1')?.link != null, 'Dep
 await app.loadGraphData(saved);
 execute = app.graph.getNodeById(executeId);
 params = app.graph.getNodeById(paramsId);
+images = app.graph.getNodeById(imagesId);
+check(widget(images, 'image_count')?.hidden === true && widget(images, 'image_count')?.value === '4', 'Image Count stays hidden and restores its automatic row state on reload');
+check(images.inputs.find(i => i.name === 'image_count.image_3')?.link != null && widget(images, 'image_count.node_id_3')?.value === '83', 'Image 3 connection and its routing survive save/reload without reindexing');
+check(widget(images, 'image_count.field_name_3.custom_field_name_3')?.value === 'reference_image', 'Image 3 custom Field survives save/reload');
 check(widget(params, 'param_count.value_1')?.value === 'hello-world', 'Save/reload preserves values');
 check(widget(params, 'param_count.field_name_1.custom_field_name_1')?.value === 'prompt_text', 'Save/reload preserves custom field');
 check(params.size.every((n, i) => Math.abs(n - size[i]) < 1), 'Save/reload preserves user node size');
@@ -248,13 +289,24 @@ oldImage.widgets_values = [
 ];
 oldImage.inputs = [{ name: 'config', type: 'RH_CONFIG', link: null }, { name: 'previous_params', type: 'RH_PARAMS', link: null },
     { name: 'image_1', type: 'IMAGE', link: null }, { name: 'image_3', type: 'IMAGE', link: 9101 }];
+// This test replaces the saved image-node inputs: also remove the original
+// graph links and source backlinks, otherwise stale target slots could point
+// at unrelated new inputs and produce a graph that ComfyUI never saved.
+const staleIds = new Set(sparse.links.filter(link => String(Array.isArray(link) ? link[3] : link.target_id) === String(oldImage.id))
+    .map(link => String(Array.isArray(link) ? link[0] : link.id)));
+sparse.links = sparse.links.filter(link => !staleIds.has(String(Array.isArray(link) ? link[0] : link.id)));
+for (const node of sparse.nodes) for (const output of node.outputs || []) {
+    if (Array.isArray(output.links)) output.links = output.links.filter(id => !staleIds.has(String(id)));
+}
 const sparseSource = sparse.nodes.find(n => String(n.id) === String(badSource.id));
 sparseSource.outputs[0].links = [9101];
 sparse.links.push([9101, badSource.id, 0, oldImage.id, 3, 'IMAGE']);
 sparse.last_link_id = 9101;
 await app.loadGraphData(sparse);
+await wait();
 const restoredImage = app.graph.getNodeById(oldImage.id);
-check(widget(restoredImage, 'image_count').value === '3', 'Sparse Image V2 slot IDs do not renumber');
+diagnostics.sparseImage = { count: widget(restoredImage, 'image_count').value, inputs: restoredImage.inputs?.map(i => [i.name, i.link]), node3: widget(restoredImage, 'image_count.node_id_3')?.value };
+check(widget(restoredImage, 'image_count').value === '4' && restoredImage.inputs.some(i => i.name === 'image_count.image_3'), 'Sparse Image V2 retains slot 3 and adds only a trailing empty Image 4');
 check(widget(restoredImage, 'image_count.node_id_3').value === '83', 'Image V2 keeps independent target node');
 check(widget(restoredImage, 'image_count.field_name_3.custom_field_name_3').value === 'reference_image', 'Image V2 custom field migrates');
 check(widget(restoredImage, 'image_count.node_id_1').value === '' && !restoredImage.widgets.some(w => /image_count\.enabled_\d+$/.test(w.name)), 'Empty disabled legacy image rows migrate without an Enable control');

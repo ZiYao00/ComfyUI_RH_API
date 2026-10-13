@@ -1,8 +1,14 @@
-// Lifecycle support around ComfyUI's own DynamicCombo. Business inputs stay native;
-// the only custom widget is a non-serializing 4px visual spacer between visible rows.
+// Lifecycle support around ComfyUI's own DynamicCombo. Business inputs stay native.
+// Upload Image V2 retains a serialized selector, but IMAGE connections own its
+// visible row count; users never need to edit Image Count.
+import { app } from "/scripts/app.js";
+
 const states = new WeakMap();
 const bound = new WeakSet();
+const imageLinksBound = new WeakSet();
 const ROW_GAP_PX = 4;
+const MAX_IMAGE_ROWS = 12;
+const IMAGE_INPUT = /^image_count\.image_(\d+)$/;
 
 const slotOf = (name) => Number(String(name).match(/_(\d+)(?:\.|$)/)?.[1] || 0);
 const isGroupSpacer = (widget) => widget?._rhGroupGap === true;
@@ -47,6 +53,67 @@ export function labelNativeControls(node) {
         if (match) item.label = `${kinds[match[1]]} ${match[2]}`;
         else if (labels[leaf]) item.label = labels[leaf];
     }
+}
+
+function meaningfulImageRow(node, slot) {
+    const image = node.inputs?.find((item) => item.name === `image_count.image_${slot}`);
+    if (image?.link != null) return true;
+    const widget = (name) => node.widgets?.find((item) => item.name === `image_count.${name}_${slot}`);
+    const nodeId = widget("node_id")?.value;
+    const field = widget("field_name")?.value;
+    const custom = node.widgets?.find((item) =>
+        item.name === `image_count.field_name_${slot}.custom_field_name_${slot}`)?.value;
+    // A disconnected but configured row must keep its stable slot identity.
+    return !!String(nodeId ?? "").trim() || !!String(custom ?? "").trim() ||
+        (field != null && field !== "image");
+}
+
+function desiredImageCount(node, state) {
+    const current = Math.min(MAX_IMAGE_ROWS, Math.max(1, Number(state.selector.value) || 1));
+    let highest = 0;
+    for (let slot = 1; slot <= current; slot++) {
+        if (meaningfulImageRow(node, slot)) highest = slot;
+    }
+    // One spare IMAGE socket is shown unless the maximum was reached.
+    // Gaps are never compacted, since Node ID and Field belong to that slot.
+    return Math.min(MAX_IMAGE_ROWS, Math.max(1, highest + 1));
+}
+
+function reconcileImageCount(node) {
+    const state = states.get(node);
+    if (!state || state.group !== "image_count" || state.restoring || app.configuringGraph || !node.graph) return;
+    const target = desiredImageCount(node, state);
+    if (target === Number(state.selector.value)) return;
+    // The native DynamicCombo setter creates/removes V3 inputs. Its callback
+    // completes the existing layout and same-session link/value bookkeeping.
+    state.selector.value = String(target);
+    state.selector.callback?.call(state.selector, String(target), app.canvas, node);
+    node.setDirtyCanvas?.(true, true);
+}
+
+function scheduleImageCount(node) {
+    const state = states.get(node);
+    if (!state || state.imageUpdateScheduled) return;
+    state.imageUpdateScheduled = true;
+    // Wait until LiteGraph's synchronous connect/disconnect has completed.
+    requestAnimationFrame(() => {
+        state.imageUpdateScheduled = false;
+        reconcileImageCount(node);
+    });
+}
+
+function observeImageLinks(node) {
+    if (imageLinksBound.has(node)) return;
+    imageLinksBound.add(node);
+    const original = node.onConnectionsChange;
+    node.onConnectionsChange = function (type, index, connected, link, slot) {
+        const result = original?.apply(this, arguments);
+        const name = slot?.name ?? this.inputs?.[index]?.name;
+        if (type === (globalThis.LiteGraph?.INPUT ?? 1) && IMAGE_INPUT.test(name || "")) {
+            scheduleImageCount(this);
+        }
+        return result;
+    };
 }
 
 function capture(node, state) {
@@ -137,6 +204,7 @@ export function configureNativeGroup(node, group, { restored = false } = {}) {
             widgets: [],
             inputNames: [],
             cache: { values: new Map(), links: new Map() },
+            imageUpdateScheduled: false,
         };
         states.set(node, state);
         const callback = selector.callback;
@@ -159,6 +227,12 @@ export function configureNativeGroup(node, group, { restored = false } = {}) {
             node.setDirtyCanvas?.(true, true);
         };
     }
+    if (group === "image_count") {
+        // Widget visibility hides it from canvas and Vue without changing
+        // its serialized value or the native backend group schema.
+        selector.hidden = true;
+        observeImageLinks(node);
+    }
     if (restored) {
         state.pending = null;
         state.count = Number(selector.value);
@@ -169,4 +243,5 @@ export function configureNativeGroup(node, group, { restored = false } = {}) {
         state.cache.links.clear();
     }
     bindRows(node, state);
+    if (group === "image_count") scheduleImageCount(node);
 }

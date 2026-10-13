@@ -1,10 +1,10 @@
 # RH 原生输入与 Upload 界面规范
 
-更新日期：2026-10-07。适用于本项目此次原生 UI 改造，不代表已发布版本或真实云端任务验收。
+更新日期：2026-10-12。记录原生 UI 与 Upload Image V2 自动输入优化；不代表已发布版本或真实 RH 云端任务验收。
 
 ## 1. 当前实现与启用方法
 
-本轮在 ComfyUI 0.39.0、前端 1.53.10 的实际安装环境验证，使用已有 V3 API，没有安装或升级依赖。这里记录的是已测组合，不是未经验证的最低版本声明。
+原生 UI 基线此前在 ComfyUI 0.39.0 / 前端 1.53.10 验证；2026-10-12 的 Upload Image V2 自动输入优化使用同一 Core 0.39.0、实际安装的前端 1.55.14，在隔离浏览器中复测。未安装或升级依赖。这里仅记录已测组合，不声称其它版本已兼容。
 
 先保存当前工作流的原始副本，再重启 ComfyUI 后端，随后在浏览器按 Ctrl+F5。仅刷新网页不能重新注册 Python 节点。本轮自动化没有启动或重启用户的 ComfyUI 服务；浏览器回归直接读取本机已安装的 frontend package，因此与 8188 是否运行无关。
 
@@ -32,7 +32,7 @@ Param Count 控制 1 至 16 组。每组只保留 Node、Field、Value；Field �
 
 | 节点 ID | 输入与业务边界 | 输出 |
 | --- | --- | --- |
-| RH_UploadImage2（显示名 RH Upload Image V2） | 1 至 12 组原生配置；真实 IMAGE 输入；每组独立 Node/Field/Custom；无 Enable；可见组间 4 px | RH_PARAMS |
+| RH_UploadImage2（显示名 RH Upload Image V2） | 自动展开 1 至 12 组真实 IMAGE 输入；每组独立 Node/Field/Custom；无可见 Image Count/Enable；可见组间 4 px | RH_PARAMS |
 | RH_UploadImage | 单路 IMAGE；可仅上传，也可加入参数列表 | STRING filename、RH_PARAMS |
 | RH_UploadVideo | 原有 VIDEO 输入，不改为路径或帧数组 | STRING filename、RH_PARAMS |
 | RH_UploadAudio | 原有 audio_path 文件路径，可连接 RH Load Audio Path；不是 AUDIO 波形输入 | STRING filename、RH_PARAMS |
@@ -49,13 +49,13 @@ RH_UploadMask 的源文件原本就存在，但包入口的导入和注册均被
 
 `nodes/rh_native.py` 是 RH Execute、RH Params V2 与八个在用 Upload 节点的活动 V3 schema 入口；`__init__.py` 保持既有公开节点 ID，再将 `RH_Execute` 映射到新的 V3 实现。Upload 旧模块继续负责媒体编码和 RH HTTP；`rh_execute2.py` 继续作为多 RH_PARAMS 合并/执行服务，并保留 Deprecated Python 节点以兼容非图调用。旧 `js/rh_execute2.js` 已退役为说明文件，图工作流中的 `RH_Execute2` 会在构造前迁移到 `RH_Execute`，不再运行手写 `addInput/prototype.configure`。RH HTTP 协议和付费提交策略没有切换。
 
-`js/rh_native_ui.js` 使用扩展生命周期钩子协调迁移与标签。`js/rh_native_groups.js` 为 Params V2 / Upload Image V2 的官方 DynamicCombo 补充同会话的值与连线恢复，并为两类分组插入 4 px 非交互 spacer；它不创建业务输入/接口，不替换 prototype.configure，也不把会话缓存伪装成持久化格式。`js/rh_native_migration.js` 只处理历史图工作流数据。
+`js/rh_native_ui.js` 使用扩展生命周期钩子协调迁移与标签。`js/rh_native_groups.js` 为 Params V2 / Upload Image V2 的官方 DynamicCombo 补充同会话的值与连线恢复，并为两类分组插入 4 px 非交互 spacer；Image V2 还在节点实例的连接事件中调度自动 Count 更新，通过原生控件 setter 生成真实 IMAGE 子输入。它不手工创建业务输入/接口，不替换 prototype.configure，也不把会话缓存伪装成持久化格式。`js/rh_native_migration.js` 只处理历史图工作流数据。
 
 旧 `js/rh_params2.js` 与 `js/rh_upload_image2.js` 保留为无操作说明入口，避免恢复手写 DOM 或双输入设计。旧 Params Python 解析器作为内部/历史兼容服务保留，不能据此重新暴露旧 UI。
 
 已验证的生命周期事实：DynamicCombo 在切换 Count 时会拆除旧子控件，并由官方 `removedWidgetValues` 恢复重新出现的 widget 值；但被移除输入的图连线会由官方 `replaceNodeInputs` 断开。因此本扩展在拆除前按输入名缓存有效链接，重新增大 Count 后再连接回来。普通值编辑不应主动调用 computeSize/setSize。
 
-当前实测的 ComfyUI 0.39.0 环境没有公开可用的 `io.DynamicGroup`；本轮不为此升级环境。DynamicCombo、MultiType 与 Autogrow 已满足当前方案，继续保留经过验证的连接恢复与迁移逻辑。显示名中的 V2 表示本项目第二代节点 UX，不等于 RunningHub HTTP V2 协议。
+当前 ComfyUI Core 0.39.0 没有公开的 `io.DynamicGroup`，且 Core V3 `Autogrow.TemplatePrefix/TemplateNames` 只接受一个模板输入，不能一次增长 IMAGE + 路由复合配置。本节点因此保留 DynamicCombo 原生分组作为唯一数量状态，使用前端原生 `widget.hidden` 隐藏 `image_count`，按 IMAGE 连接和非空路由内容自动设置内部数量；每次连接最后一路自动出现下一路，最多 12 路。对没有数据、没有连线的尾部行可自动收起；中途断开或有 Node/Field/Custom 的行保留原编号。该控件值仍会写入 workflow JSON 和 API prompt，不是另造一份状态。显示名 V2 不等于 RunningHub HTTP V2 协议。
 
 ## 4. 历史工作流迁移边界
 
@@ -77,7 +77,7 @@ ComfyUI 会记录扩展钩子异常后继续加载，因此仅抛异常不是安
 | 原有 Python 单元测试 | 54/54 通过 | HTTP 客户端、任务提交安全、输出处理、历史解析等；模拟请求 |
 | 当前真实 ComfyUI API/schema | 17/17 通过 | 十个 V3 类注册、Execute Autogrow、类型与输出契约、官方动态输入展开与 EXECUTE_NORMALIZED、上传参数传递；网络禁止/上传模拟 |
 | JavaScript 迁移单测 | 15/15 通过 | 旧格式、Params/Image 上一版 Enable、Execute/Execute2 fan-in 平移、超限拒绝、位置值回退、稀疏编号、事务性与子图边界 |
-| 实际安装前端的隔离浏览器 | 78/78 通过 | 精确显示名、Execute 单链 Autogrow（params→params_1→params_2）、旧 Execute/V2/Execute2 连线与可见标签迁移、Params/Image 无 Enable、4 px 非序列化分隔、Count 缩减无弹窗、同会话值与连线恢复、四种标量、Primitive/Reroute、保存重载、复制粘贴、撤销重做、迁移保护与主题切换 |
+| 实际安装前端的隔离浏览器（本轮 1.55.14） | 102/102 通过 | 原有 Execute/Params 行为、Image V2 Count 隐藏、Image 1→12 自动增长、空尾行收缩、中途断连保持编号、路由值与图片连线保存重载、稀疏旧工作流迁移、主题切换；仅隔离环境，不代表正式 8188 用户环境验收 |
 
 浏览器使用已有 Edge、1920×1080 视口，直接从已安装的 `comfyui_frontend_package/static` 提供真实前端文件，再注入本项目 schema 与测试来源节点；不要求 8188 运行，也没有把测试节点注册到用户服务。所有写请求都在隔离服务器内阻断或 mock。没有使用真实 RH 凭据，没有提交付费任务。
 

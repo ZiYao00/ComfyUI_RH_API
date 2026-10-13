@@ -1,6 +1,6 @@
 # Quick Start Guide
 
-> Native UI update (2026-10-07): `RH Execute`, `RH Params V2`, and all eight registered upload nodes now use the current V3 schema path. `RH Execute` incorporates the former Execute 2 multi-params behavior through one native Autogrow chain; saved `RH Execute 2` graph nodes migrate to `RH Execute`, while the deprecated Python class remains only for compatibility outside graph migration. Tested with ComfyUI 0.39.0 / frontend 1.53.10. Save an original workflow copy, restart the backend, then refresh with Ctrl+F5. See [原生输入使用说明、迁移边界与验证记录](NATIVE_UI.md). This update does not install or upgrade runtime dependencies.
+> Native UI baseline (2026-10-07): `RH Execute`, `RH Params V2`, and eight registered upload nodes use V3 schemas, with `RH Execute` incorporating the former Execute 2 multi-params Autogrow chain. Image V2 update (2026-10-12): its IMAGE inputs grow automatically as they are connected, with no user-facing Image Count. Checked with ComfyUI 0.39.0 / frontend 1.55.14 in an isolated browser; the earlier baseline used frontend 1.53.10. For a backend code update restart ComfyUI; for this JS-only update refresh the browser with Ctrl+F5. See [原生输入使用说明、迁移边界与验证记录](NATIVE_UI.md). No runtime dependencies are installed or upgraded.
 
 ## 1. Install
 
@@ -56,7 +56,7 @@ Use the matching upload node:
 
 Image / Video / Audio can optionally append the returned RH filename to `RH_PARAMS`. File / Latent keep their existing single `RH_PARAM` output, and batch image nodes retain their separate batch semantics. Audio still accepts a file path, not an AUDIO waveform.
 
-`RH Upload Image V2` provides 1 to 12 native groups with independent target node/field settings and IMAGE inputs. It has no Enable switch, uses the same 4 px visible-row spacing as Params V2, and follows the same no-dialog Count reduction / same-session restoration behavior for mapping values and IMAGE links. The old HTML row form is retired. The single-image `RH Upload Image` remains a separate node, and the unregistered `RH_UploadMask` module is not enabled by this update.
+`RH Upload Image V2` starts with Image 1. Connecting it reveals Image 2; each connected last slot reveals another native IMAGE input together with its independent Node / Field / Custom Field controls, up to 12 slots. A trailing unconfigured row can disappear after disconnection; disconnected rows containing a target mapping stay visible, and sparse numbers never shift. `Image Count` is hidden, not deleted from the saved V3 group/prompt contract, so older saved workflows still load. No Enable switch or handwritten HTML form is used. The single-image `RH Upload Image` and the unregistered `RH_UploadMask` are unchanged.
 
 ## 6. Understand output saving
 

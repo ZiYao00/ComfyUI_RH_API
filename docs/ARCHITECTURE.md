@@ -357,6 +357,47 @@ so an operator can retry read-only download for an existing paid task
 without creating another cloud generation. A failing download is not
 a reason to rerun RH Execute automatically.
 
+### Video frame decoding modes (2026-10-13; stage C2)
+
+The legacy IMAGE output `video_frames` previously decoded every frame
+of the first RH video unconditionally, even when users only needed the
+native lazy `VIDEO` object. Long H3 videos can therefore allocate
+large uncompressed floating-point frame tensors in CPU RAM.
+
+`RH_Execute` (native V3) and `RH_Download` now offer
+`video_frame_mode` with exactly three choices:
+
+- `all_frames` (default): preserves the old full-frame IMAGE output;
+  expensive on long videos and not recommended if unused.
+- `preview_only`: decodes at most the first frame of the first video
+  into the IMAGE output, stopping the OpenCV read loop immediately.
+- `disabled`: never invokes the frame decoder; the IMAGE
+  `video_frames` port returns its legacy placeholder for datatype and
+  output-index compatibility. Use the separate `VIDEO` port instead.
+
+The original remote file is downloaded/preserved **before** any conversion,
+and `VIDEO` remains a file-backed `InputImpl.VideoFromFile` object in
+every mode. No output port was removed or reordered, and neither RH
+upload nor paid-task creation payloads change. The canonical policy
+is `nodes/rh_video_frame_policy.py`; invalid choices fail before RH
+Execute creates a paid task and before Download starts polling. The
+optional V1 Download combo is **appended after** its existing widgets,
+and the native Execute combo follows existing fixed widgets, preserving
+the positional values of older saved workflows. Old graphs default to
+`all_frames`; do not silently switch them to preview mode. Re-export
+old API-format prompts from the current graph after schema changes.
+
+Validation: 98 Python unit tests, 20 JS migration tests, 20 target-Core
+V3 tests and the installed frontend's isolated UI regression passed.
+A standalone CPU codec probe against OpenCV/Torch from the installed
+ComfyUI Python used a synthetic six-frame AVI and verified 1/6
+preview frames versus 6/6 full frames, without RH network requests.
+Unisolated import of the full RH media module in a standalone embedded
+Python process exited abnormally after a CUDA driver warning, so the
+probe isolated unrelated Core/audio initialization. This is **not** an
+end-to-end user-backend test, and real RunningHub video generation/output
+conversion remains pending separate permission and environment validation.
+
 ## 12. Deferred follow-up backlog
 
 The current maintenance cycle is intentionally closed without forcing tests that the present environment cannot run. The following items are deferred rather than treated as release blockers:

@@ -7,6 +7,7 @@ Simplified execution with automatic progress tracking and output handling
 from .rh_utils import _monitor_task, _get_outputs, _create_placeholder_image, _create_placeholder_latent
 from .rh_client import RHClient, RHTaskSubmissionUncertainError
 from .rh_task_journal import record_created_task
+from .rh_video_frame_policy import validate_video_frame_mode
 from .rh_workflow_schema import RHWorkflowInspection, validate_node_info_list
 
 try:
@@ -67,7 +68,8 @@ class RH_Execute:
     OUTPUT_NODE = True
     
     def execute(self, config, params=None, timeout=600, use_high_performance=False,
-                save_to_local=True, output_prefix="RH", workflow_schema=None, instance_type=None):
+                save_to_local=True, output_prefix="RH", workflow_schema=None, instance_type=None,
+                video_frame_mode="all_frames"):
         """
         Execute RunningHub workflow or AI app
 
@@ -88,6 +90,8 @@ class RH_Execute:
 
         # Validate config
         self._validate_config(config)
+        # Reject bad policies BEFORE a possibly charged create-task POST.
+        validate_video_frame_mode(video_frame_mode)
         
         # Create task
         # Opt-in validation of final merged overrides before the paid POST.
@@ -116,7 +120,11 @@ class RH_Execute:
         print("✓ Task completed")
 
         # Get and process outputs using shared utility function
-        outputs = _get_outputs(task_id, config, save_to_local, output_prefix)
+        if video_frame_mode == "all_frames":
+            outputs = _get_outputs(task_id, config, save_to_local, output_prefix)
+        else:
+            outputs = _get_outputs(task_id, config, save_to_local, output_prefix,
+                                   video_frame_mode=video_frame_mode)
         print("✓ Outputs processed")
 
         # Handle case where task completes with no output

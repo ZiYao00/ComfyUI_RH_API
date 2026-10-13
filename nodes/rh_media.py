@@ -89,12 +89,14 @@ def load_video(filepath: str):
     return InputImpl.VideoFromFile(filepath)
 
 
-def extract_video_frames(filepath: str):
+def extract_video_frames(filepath: str, max_frames: int | None = None):
     """Legacy compatibility path for RH_Execute.video_frames.
 
-    This intentionally remains separate from VIDEO creation. It may use substantial
-    memory for long videos and should not be used by new workflows.
+    Full-frame mode remains separate from the lazy VIDEO output and can use substantial
+    memory for long videos. max_frames=1 limits preview decoding to one frame.
     """
+    if max_frames is not None and (not isinstance(max_frames, int) or isinstance(max_frames, bool) or max_frames < 1):
+        raise ValueError("max_frames must be a positive integer or None.")
     if cv2 is None or torch is None or np is None:
         return []
 
@@ -107,6 +109,8 @@ def extract_video_frames(filepath: str):
                 break
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             frames.append(torch.from_numpy(frame_rgb.astype(np.float32) / 255.0).unsqueeze(0))
+            if max_frames is not None and len(frames) >= max_frames:
+                break
     finally:
         cap.release()
     return frames

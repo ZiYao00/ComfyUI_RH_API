@@ -5,6 +5,7 @@ RH_Download Node - Download results from a RunningHub task
 import torch
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from .rh_utils import _monitor_task, _get_outputs
+from .rh_video_frame_policy import validate_video_frame_mode
 
 class RH_Download:
     """
@@ -40,6 +41,11 @@ class RH_Download:
                     "multiline": False,
                     "tooltip": "Prefix for saved files"
                 }),
+                "video_frame_mode": (["all_frames", "preview_only", "disabled"], {
+                    "default": "all_frames",
+                    "tooltip": "All Frames=legacy; Preview Only=first frame; Disabled=skip decoding; VIDEO stays intact.",
+                }),
+
             }
         }
 
@@ -49,12 +55,17 @@ class RH_Download:
     CATEGORY = "Ken-Chen/RH-API"
     OUTPUT_NODE = True
 
-    def _process_single_task(self, task_id, config, timeout, save_to_local, output_prefix):
+    def _process_single_task(self, task_id, config, timeout, save_to_local, output_prefix,
+                             video_frame_mode="all_frames"):
         """Processes a single task ID: monitors, downloads, and returns results."""
         try:
             print(f"  - Starting processing for task ID: {task_id}...")
             _monitor_task(task_id, config, timeout)
-            outputs = _get_outputs(task_id, config, save_to_local, output_prefix)
+            if video_frame_mode == "all_frames":
+                outputs = _get_outputs(task_id, config, save_to_local, output_prefix)
+            else:
+                outputs = _get_outputs(task_id, config, save_to_local, output_prefix,
+                                       video_frame_mode=video_frame_mode)
             if outputs is None:
                 raise Exception("Task completed with no output.")
             print(f"    ✓ Task {task_id} processed successfully.")
@@ -65,7 +76,9 @@ class RH_Download:
                 f"({type(exc).__name__}). Check the original saved files and task ID."
             ) from exc
 
-    def download(self, config, task_id, timeout=600, save_to_local=True, output_prefix="RH_DL"):
+    def download(self, config, task_id, timeout=600, save_to_local=True,
+                 output_prefix="RH_DL", video_frame_mode="all_frames"):
+        validate_video_frame_mode(video_frame_mode)
         if not task_id or not task_id.strip():
             raise ValueError("Task ID is required.")
 
@@ -92,7 +105,8 @@ class RH_Download:
         if is_batch:
             with ThreadPoolExecutor(max_workers=min(10, len(task_ids))) as executor:
                 future_to_index = {
-                    executor.submit(self._process_single_task, tid, config, timeout, save_to_local, f"{output_prefix}_{i+1}"): i
+                    executor.submit(self._process_single_task, tid, config, timeout, save_to_local,
+                                    f"{output_prefix}_{i+1}", video_frame_mode): i
                     for i, tid in enumerate(task_ids)
                 }
                 for future in as_completed(future_to_index):
@@ -105,7 +119,8 @@ class RH_Download:
                         failures.append((index, task_ids[index], type(exc).__name__))
 
         else:
-            all_results[0] = self._process_single_task(task_ids[0], config, timeout, save_to_local, output_prefix)
+            all_results[0] = self._process_single_task(task_ids[0], config, timeout, save_to_local,
+                                                    output_prefix, video_frame_mode)
 
         if failures:
             details = ", ".join(

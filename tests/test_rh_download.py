@@ -38,6 +38,29 @@ def config():
 
 
 class DownloadContractTests(unittest.TestCase):
+    def test_download_exposes_modes_without_changing_outputs(self):
+        module, utils, torch = load_download()
+        inputs = module.RH_Download.INPUT_TYPES()
+        self.assertEqual(list(inputs["optional"]), ["save_to_local", "output_prefix", "video_frame_mode"])
+        choices, attrs = inputs["optional"]["video_frame_mode"]
+        self.assertEqual(choices, ["all_frames", "preview_only", "disabled"])
+        self.assertEqual(attrs["default"], "all_frames")
+        self.assertEqual(len(module.RH_Download.RETURN_TYPES), 6)
+        result = module.RH_Download().download(
+            config(), "existing-task", video_frame_mode="preview_only"
+        )
+        self.assertEqual(len(result), 6)
+        utils._get_outputs.assert_called_once_with(
+            "existing-task", config(), True, "RH_DL", video_frame_mode="preview_only"
+        )
+
+    def test_invalid_download_mode_stops_before_remote_query(self):
+        module, utils, torch = load_download()
+        with self.assertRaisesRegex(ValueError, "video_frame_mode"):
+            module.RH_Download().download(config(), "existing-task", video_frame_mode="bad")
+        utils._monitor_task.assert_not_called()
+        utils._get_outputs.assert_not_called()
+
     def test_success_keeps_all_six_output_types(self):
         module, utils, torch = load_download()
         result = module.RH_Download().download(config(), "successful-task")

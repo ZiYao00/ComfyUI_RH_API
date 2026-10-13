@@ -176,6 +176,27 @@ Task ID，避免后续付费任务继续创建。云端提交后无法确认 Tas
 时，仍需人工查 RH 任务列表；不自动重试。当前只有模拟请求与
 本地文件测试，尚未进行用户账号的真实付费任务恢复验收。
 
+### 2026-10-13 C2：视频帧解码策略
+
+`RH Execute` 新增原生 `Video Frames` 下拉：
+`all_frames`（兼容旧工作流，解码全部帧）、`preview_only`
+（仅解码首帧）、`disabled`（不解码视频帧）。
+`RH Download Results` 也追加同名可选输入，并严格排在既有
+`output_prefix` 之后，避免旧版 Widget 位置数据错位。
+
+该控件只影响旧 `video_frames` IMAGE 输出；原始视频优先保存，
+独立 `VIDEO` 始终从本地原文件构造，未改为帧列表。禁用时的
+IMAGE 端口仍使用兼容占位图，不能当作视频实际帧使用。
+30 秒 H3 这类长视频优先选择 `disabled`，需要一帧预览时
+选择 `preview_only`。
+
+目标 Core 0.39.0 / Frontend 1.55.14 已完成 Schema、隔离浏览器
+保存重载及单元回归。另用本机 OpenCV/Torch 的 CPU 路径成功
+验证 6 帧样本：预览仅读 1 帧，完整读 6 帧。独立进程直接
+引入完整媒体模块曾在 CUDA 警告后异常退出，因此 CPU 解码探针
+隔离了与测试无关的 Core/音频导入；不能据此声称实际 8188
+ComfyUI 后端及云端视频生成已完成验收。
+
 ## 6. 官方依据
 
 - [ComfyUI V3 迁移、MultiType 与动态输入](https://docs.comfy.org/custom-nodes/v3_migration)

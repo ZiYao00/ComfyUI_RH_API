@@ -78,8 +78,11 @@ def main():
             self.assertEqual(names[-1], "params_15")
             self.assertEqual(len(names), 16)
             self.assertNotIn("extra_params", execute["optional"])
-            for name in ("timeout", "instance_type", "save_to_local", "output_prefix"):
+            for name in ("timeout", "instance_type", "save_to_local", "output_prefix", "video_frame_mode"):
                 self.assertIn(name, execute["required"])
+            modes = repr(execute["required"]["video_frame_mode"])
+            for mode in ("all_frames", "preview_only", "disabled"):
+                self.assertIn(mode, modes)
             choices = repr(execute["required"]["instance_type"])
             for choice in ("auto", "default", "plus", "ultra"):
                 self.assertIn(choice, choices)
@@ -95,6 +98,7 @@ def main():
                 self.assertEqual(execute.call_args.kwargs["params_1"], extra)
                 self.assertFalse(execute.call_args.kwargs["save_to_local"])
                 self.assertEqual(execute.call_args.kwargs["instance_type"], "auto")
+                self.assertEqual(execute.call_args.kwargs["video_frame_mode"], "all_frames")
 
         def test_inspector_schema_and_optional_execute_wiring(self):
             import math
@@ -133,6 +137,13 @@ def main():
                     with patch.object(native.ExecuteService, "execute", return_value=fake) as run:
                         native.RH_ExecuteNative.execute({}, instance_type=selected, use_high_performance=high)
                         self.assertEqual(run.call_args.kwargs["instance_type"], expected)
+
+        def test_execute_passes_opt_in_video_frame_policy(self):
+            fake = (object(), object(), "", None, None, {"samples": object()}, "task")
+            with patch.object(native.ExecuteService, "execute", return_value=fake) as run:
+                result = native.RH_ExecuteNative.execute({}, video_frame_mode="disabled")
+            self.assertEqual(result.result[-1], "task")
+            self.assertEqual(run.call_args.kwargs["video_frame_mode"], "disabled")
 
         def test_audio_still_accepts_a_path_video_still_accepts_video(self):
             self.assertEqual(definitions["RH_UploadAudio"]["input"]["required"]["audio_path"][0], "STRING")

@@ -112,6 +112,27 @@ Already preserved original files remain intact. Use the existing Task
 ID (or the local task journal) to retry the **download** after fixing
 the issue; this does not create another paid RH generation.
 
+### 3E. Limit video frame memory (recommended for long videos)
+
+In `RH Execute` or `RH Download Results`, set `Video Frames`:
+
+- `all_frames`: legacy default, extracts every frame; may use several GB
+  for a 30-second video. Use only if a downstream node requires all IMAGE
+  frames.
+- `preview_only`: extracts **one preview frame** from the first video;
+  the full original video remains in `VIDEO`.
+- `disabled`: skips video-to-IMAGE extraction entirely. The
+  `video_frames` IMAGE port retains a compatibility placeholder;
+  use `VIDEO` for the real MP4/video.
+
+For the user's H3 30-second generation workflow, prefer
+`disabled` if you only need the resulting video file, or
+`preview_only` if you also want one frame for inspection. The default
+remains `all_frames` so existing workflows retain their frame output.
+Settings are independent of the RH cloud instance selector and do not
+change credit costs or the remote result. No paid video task was
+submitted during development of this feature.
+
 ## 4. Override text parameters
 
 Use `RH Param`:

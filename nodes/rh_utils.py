@@ -13,6 +13,7 @@ import os
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from .rh_client import RHClient
+from .rh_video_frame_policy import validate_video_frame_mode
 
 # Dependency checks
 try:
@@ -185,8 +186,9 @@ def _monitor_task(task_id, config, timeout):
         time.sleep(0.5)
 
 
-def _get_outputs(task_id, config, save_to_local, output_prefix):
+def _get_outputs(task_id, config, save_to_local, output_prefix, video_frame_mode="all_frames"):
     """Get and process task outputs"""
+    validate_video_frame_mode(video_frame_mode)
     api_key = config["api_key"]
     base_url = config["base_url"]
     query_api = config.get("query_api", "legacy")
@@ -198,7 +200,8 @@ def _get_outputs(task_id, config, save_to_local, output_prefix):
         status = _check_task_status(task_id, api_key, base_url, query_api=query_api)
 
         if isinstance(status, list):
-            return _process_outputs(status, save_to_local, output_prefix, task_id=task_id)
+            return _process_outputs(status, save_to_local, output_prefix, task_id=task_id,
+                                    video_frame_mode=video_frame_mode)
 
         if isinstance(status, dict):
             task_status = status.get("taskStatus")
@@ -250,9 +253,10 @@ def _download_and_process_file(output):
         print(f"Warning: Failed to download or process {file_type} file from {file_url}: {e}")
     return None
 
-def _process_outputs(outputs, save_to_local, output_prefix, task_id=None):
+def _process_outputs(outputs, save_to_local, output_prefix, task_id=None, video_frame_mode="all_frames"):
     """Preserve RH files first, then adapt them to ComfyUI output types."""
     import tempfile
+    validate_video_frame_mode(video_frame_mode)
     from .rh_outputs import download_output_item, normalize_outputs
     from . import rh_media
 
@@ -334,8 +338,11 @@ def _process_outputs(outputs, save_to_local, output_prefix, task_id=None):
                 if video_data is None:
                     video_data = rh_media.load_video(item.local_path)
                     successful_types.add("video")
-                if not video_frames:
+                if not video_frames and video_frame_mode == "all_frames":
                     video_frames.extend(rh_media.extract_video_frames(item.local_path))
+                elif not video_frames and video_frame_mode == "preview_only":
+                    # Decode only one frame; VIDEO stays a lazy file-backed object.
+                    video_frames.extend(rh_media.extract_video_frames(item.local_path, max_frames=1))
             elif item.media_type == "latent":
                 if latent_data is None:
                     latent_data = rh_media.load_latent(item.local_path)
@@ -367,6 +374,11 @@ def _process_outputs(outputs, save_to_local, output_prefix, task_id=None):
     if not images:
         images.append(_create_placeholder_image("No images"))
     if not video_frames:
+        if "video" in present_types:
+            print(
+                f"Video Frames mode '{video_frame_mode}' produced no IMAGE frames. "
+                "Using the legacy IMAGE placeholder; use the original lazy VIDEO output."
+            )
         video_frames.append(_create_placeholder_image("No video frames"))
     if text_content is None:
         text_content = ""

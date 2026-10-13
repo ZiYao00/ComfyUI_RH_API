@@ -43,6 +43,14 @@ check(instanceControl?.value === 'auto', 'New Execute defaults to auto without a
 check(Array.isArray(instanceOptions) && ['auto', 'default', 'plus', 'ultra'].every(item => instanceOptions.includes(item)),
     'Instance dropdown lists auto, default, plus and ultra');
 set(execute, 'instance_type', 'ultra');
+const frameControl = widget(execute, 'video_frame_mode');
+const frameChoices = typeof frameControl?.options?.values === 'function'
+    ? frameControl.options.values() : frameControl?.options?.values;
+check(frameControl?.value === 'all_frames', 'Legacy-compatible new Execute defaults to all video frames');
+check(Array.isArray(frameChoices) && ['all_frames', 'preview_only', 'disabled'].every(x => frameChoices.includes(x)),
+    'Video frame dropdown exposes all, preview and disabled modes');
+set(execute, 'video_frame_mode', 'preview_only');
+check(widget(execute, 'video_frame_mode')?.value === 'preview_only', 'Preview Only mode can be selected with a native widget');
 check(widget(execute, 'instance_type')?.value === 'ultra', 'Instance dropdown accepts Ultra without changing other widgets');
 const paramsSourceA = create('RH_Test_RH_PARAMS', [20, 20]);
 const paramsSourceB = create('RH_Test_RH_PARAMS', [20, 120]);
@@ -165,6 +173,7 @@ await app.loadGraphData(legacyExecuteGraph);
 execute = app.graph.getNodeById(executeId);
 check(widget(execute, 'timeout')?.value === 777 && widget(execute, 'instance_type')?.value === 'plus' && widget(execute, 'save_to_local')?.value === true && widget(execute, 'output_prefix')?.value === 'OLD', 'Legacy RH Execute widget values load into the new implementation without shifting');
 check(execute.inputs.find(i => i.name === 'params.params')?.link != null, 'Legacy RH Execute params link migrates to the new Autogrow chain');
+check(widget(execute, 'video_frame_mode')?.value === 'all_frames', 'Legacy graph missing Video Frames widget defaults to all_frames');
 
 const legacyFalseGraph = structuredClone(legacyExecuteGraph);
 const oldFalse = legacyFalseGraph.nodes.find(n => String(n.id) === String(executeId));
@@ -222,6 +231,7 @@ params = app.graph.getNodeById(paramsId);
 images = app.graph.getNodeById(imagesId);
 check(widget(images, 'image_count')?.hidden === true && widget(images, 'image_count')?.value === '4', 'Image Count stays hidden and restores its automatic row state on reload');
 check(widget(execute, 'instance_type')?.value === 'ultra', 'Native Ultra instance value survives save/reload');
+check(widget(execute, 'video_frame_mode')?.value === 'preview_only', 'Native Preview Only mode survives workflow save/reload');
 check(images.inputs.find(i => i.name === 'image_count.image_3')?.link != null && widget(images, 'image_count.node_id_3')?.value === '83', 'Image 3 connection and its routing survive save/reload without reindexing');
 check(widget(images, 'image_count.field_name_3.custom_field_name_3')?.value === 'reference_image', 'Image 3 custom Field survives save/reload');
 check(widget(params, 'param_count.value_1')?.value === 'hello-world', 'Save/reload preserves values');

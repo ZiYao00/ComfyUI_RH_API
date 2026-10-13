@@ -140,6 +140,37 @@ class TaskSubmissionTests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         self.assertIn("Do not auto-retry", str(context.exception))
 
+    def test_invalid_video_frame_mode_never_submits_a_paid_task(self):
+        requests = make_requests_stub()
+        attempts = []
+        requests.post = lambda *args, **kwargs: attempts.append((args, kwargs))
+        module = load_rh_execute(requests)
+        with self.assertRaisesRegex(ValueError, "video_frame_mode"):
+            module.RH_Execute().execute(
+                {"api_key": "[REDACTED]", "base_url": "https://www.runninghub.ai",
+                 "workflow_or_app_id": "sample-workflow"},
+                params=[], video_frame_mode="unexpected",
+            )
+        self.assertEqual(attempts, [])
+
+    def test_preview_mode_reaches_output_processing_after_one_submit(self):
+        from unittest.mock import patch
+        requests = make_requests_stub()
+        module = load_rh_execute(requests)
+        config = {"api_key": "[REDACTED]", "base_url": "https://www.runninghub.ai",
+                  "workflow_or_app_id": "sample-workflow"}
+        dummy_outputs = ("images", "frames", "", None, None, {"samples": "fake"})
+        with patch.object(module.RH_Execute, "_create_task", return_value="task-42") as create, \
+             patch.object(module, "_get_outputs", return_value=dummy_outputs) as get_outputs:
+            values = module.RH_Execute().execute(
+                config, params=[], video_frame_mode="preview_only"
+            )
+        create.assert_called_once()
+        get_outputs.assert_called_once_with(
+            "task-42", config, True, "RH", video_frame_mode="preview_only"
+        )
+        self.assertEqual(values[-1], "task-42")
+
     def test_preflight_bad_route_blocks_paid_task_creation(self):
         requests = make_requests_stub()
         calls = []

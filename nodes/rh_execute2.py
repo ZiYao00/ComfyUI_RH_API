@@ -166,6 +166,7 @@ class RH_Execute2(RH_Execute):
         output_prefix="RH",
         workflow_schema=None,
         instance_type=None,
+        video_frame_mode="all_frames",
         **kwargs,
     ):
         merged_params = self.merge_param_sources(params=params, dynamic_params=kwargs)
@@ -178,4 +179,5 @@ class RH_Execute2(RH_Execute):
             output_prefix=output_prefix,
             workflow_schema=workflow_schema,
             instance_type=instance_type,
+            video_frame_mode=video_frame_mode,
         )

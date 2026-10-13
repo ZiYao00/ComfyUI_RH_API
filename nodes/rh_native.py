@@ -184,6 +184,9 @@ def execute_schema(node_id: str, title: str, *, deprecated: bool = False):
                              tooltip="Also preserve RunningHub original files in the ComfyUI output directory."),
             io.String.Input("output_prefix", display_name="Output Prefix", default="RH", multiline=False,
                             tooltip="Prefix used only when RH original files are preserved."),
+            io.Combo.Input("video_frame_mode", display_name="Video Frames",
+                           options=["all_frames", "preview_only", "disabled"], default="all_frames",
+                           tooltip="All Frames (legacy, high memory); Preview Only (one frame); Disabled (no frame decoding). VIDEO remains available."),
             WorkflowSchema.Input("workflow_schema", optional=True,
                                  tooltip="Optional RH Workflow Inspect result; validates overrides before paid tasks."),
         ],
@@ -209,7 +212,7 @@ class RH_ExecuteNative(io.ComfyNode):
     @classmethod
     def execute(cls, config, timeout=600, params=None,
                 instance_type=None, save_to_local=False, output_prefix="RH", workflow_schema=None,
-                use_high_performance=False):
+                use_high_performance=False, video_frame_mode="all_frames"):
         if params is None:
             sources = {}
         elif isinstance(params, dict):
@@ -227,6 +230,7 @@ class RH_ExecuteNative(io.ComfyNode):
                            ("plus" if use_high_performance else "auto")),
             save_to_local=save_to_local,
             output_prefix=output_prefix,
+            video_frame_mode=video_frame_mode,
             workflow_schema=workflow_schema,
             **sources,
         )

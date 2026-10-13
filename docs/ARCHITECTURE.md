@@ -211,6 +211,37 @@ Current real-world validation status (2026-09-16):
 
 Also verify Chinese UTF-8 text, multiple outputs, no-output tasks, and a deliberate conversion/download failure path when practical.
 
+### Workflow field inspection (2026-10-13; stage A1)
+
+`nodes/rh_workflow_schema.py` now parses ComfyUI API-format graphs or the RH
+`getJsonApiFormat` envelope into an in-memory index of exact
+`nodeId + fieldName` pairs. It only stores field names, inferred primitive
+kind, connection markers, node class and a signature fingerprint; it does not
+retain input defaults, remote media filenames, credentials, or the complete
+prompt JSON. Field types inferred from existing values are advisory; this is
+not a replacement for target-node `INPUT_TYPES` metadata.
+
+`RHClient.get_workflow_api_json` performs a single **read-only remote metadata
+query** against `https://www.runninghub.ai` or `https://www.runninghub.cn`,
+rejects redirects and arbitrary hosts, and does not queue tasks. The caller
+must explicitly request the query; no implicit fetch occurs during workflow
+load, save, or execution. The client returns the upstream envelope only in
+memory and does not print response contents.
+
+**Execution gate:** stage A1 is implemented as a separate parser / client method
+and unit-tested; it is **not yet connected** to `RH_Execute` or the UI. Do
+not claim that RH tasks are currently prevented from using invalid cloud
+fields. Before enabling strict submission blocking, compare against the real
+cloud schema for the matching account, domain, workflow ID and version, and
+implement an explicit fallback for missing or stale metadata. AI Apps remain
+outside this workflow-only inspector. The baseline node schemas and task
+submission payload have not been changed.
+
+Regression fixture: node 28 `CR Prompt Text` uses `prompt`, not `text`;
+other sample fields: node 7 `width/height`, node 27 `value`, node 111
+`image`. Use `python -B tests/run_tests.py` for the offline contract
+tests. Never log raw remote JSON during diagnostics.
+
 ## 12. Deferred follow-up backlog
 
 The current maintenance cycle is intentionally closed without forcing tests that the present environment cannot run. The following items are deferred rather than treated as release blockers:

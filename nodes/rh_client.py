@@ -36,6 +36,36 @@ class RHClient:
         self.base_url = (base_url or "https://www.runninghub.cn").rstrip("/")
         self.session = session
 
+    def get_workflow_api_json(self, workflow_id: str, timeout: int = 20) -> dict:
+        """Read a workflow definition without creating a paid task.
+
+        Do not log the returned payload: it can include prompts or filenames.
+        """
+        if not str(workflow_id or "").strip():
+            raise ValueError("Workflow ID is required for RH schema inspection.")
+        # A schema-inspection call carries the API key. Do not send it to
+        # arbitrary URLs copied from a workflow or configured for a proxy.
+        from urllib.parse import urlsplit
+        parsed_base = urlsplit(self.base_url)
+        if (parsed_base.scheme != "https" or parsed_base.username or parsed_base.password
+                or parsed_base.port is not None or parsed_base.path not in {"", "/"}
+                or parsed_base.hostname not in {"www.runninghub.ai", "www.runninghub.cn"}):
+            raise ValueError("Schema inspection requires the official HTTPS RunningHub API domain.")
+        response = self.session.post(
+            f"{self.base_url}/api/openapi/getJsonApiFormat",
+            json={"apiKey": self.api_key, "workflowId": str(workflow_id).strip()},
+            headers={"Content-Type": "application/json"},
+            timeout=timeout,
+            allow_redirects=False,
+        )
+        if getattr(response, "status_code", 200) in {301, 302, 303, 307, 308}:
+            raise RuntimeError("RH schema inspection refused an HTTP redirect.")
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict) or payload.get("code") != 0:
+            raise RuntimeError("RunningHub could not return a valid workflow definition.")
+        return payload
+
     def query_task(self, task_id: str, mode: str = "legacy") -> RHQueryResult:
         mode = (mode or "legacy").strip().lower()
         if mode not in self.SUPPORTED_QUERY_MODES:

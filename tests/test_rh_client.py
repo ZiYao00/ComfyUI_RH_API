@@ -153,6 +153,34 @@ class RHClientTests(unittest.TestCase):
         self.assertIn('"instanceType": "plus"', kwargs["data"])
         self.assertEqual(kwargs["headers"]["Content-Type"], "application/json")
 
+    def test_workflow_schema_fetch_is_read_only_and_never_creates_a_task(self):
+        session = RecordingSession({"code": 0, "data": {"prompt": '{"28":{"class_type":"CR Prompt Text","inputs":{"prompt":"private"}}}'}})
+        client = self.module.RHClient("secret", "https://www.runninghub.ai", session=session)
+        response = client.get_workflow_api_json("2109574959826993154")
+        self.assertEqual(response["code"], 0)
+        self.assertEqual(len(session.calls), 1)
+        url, kwargs = session.calls[0]
+        self.assertEqual(url, "https://www.runninghub.ai/api/openapi/getJsonApiFormat")
+        self.assertEqual(kwargs["json"], {"apiKey": "secret", "workflowId": "2109574959826993154"})
+        self.assertFalse(kwargs["allow_redirects"])
+        self.assertNotIn("instanceType", kwargs["json"])
+        self.assertNotIn("nodeInfoList", kwargs["json"])
+
+    def test_schema_fetch_rejects_untrusted_api_key_destination(self):
+        session = RecordingSession({"code": 0, "data": {"prompt": "{}"}})
+        for address in ("http://www.runninghub.ai", "https://www.runninghub.ai.evil.example",
+                        "https://evil.example", "https://www.runninghub.cn@evil.example"):
+            with self.subTest(address=address):
+                with self.assertRaises(ValueError):
+                    self.module.RHClient("secret", address, session=session).get_workflow_api_json("11")
+        self.assertEqual(session.calls, [])
+
+    def test_schema_fetch_reports_upstream_error_without_leaking_response(self):
+        session = RecordingSession({"code": 403, "msg": "secret data", "data": None})
+        with self.assertRaisesRegex(RuntimeError, "could not return") as context:
+            self.module.RHClient("secret", "https://www.runninghub.cn", session=session).get_workflow_api_json("11")
+        self.assertNotIn("secret data", str(context.exception))
+
     def test_cancel_task_is_centralized_in_client(self):
         session = RecordingSession({"code": 0, "msg": "success", "data": None})
         client = self.module.RHClient("key", "https://rh.example", session=session)

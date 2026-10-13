@@ -32,43 +32,6 @@ Add `RH Execute`, connect `RH Config.config`, and queue the prompt.
 
 `RH Execute` waits for the RH task, preserves/stages the returned files, converts supported files to ComfyUI values, and returns the `task_id`. Its RH_PARAMS fan-in is one native Autogrow chain: by default only `params` is visible; connecting it reveals `params_1`, then `params_2`, and so on through `params_15` (16 sources total). Later sources override duplicate node/field pairs, matching the former Execute 2 behavior. Saved graph workflows from the old Execute layouts are migrated automatically; old API-format prompts should be re-exported from the migrated graph.
 
-### 3C. Recover a created task without submitting another paid run
-
-After RunningHub confirms task creation, RH Execute and RH Batch Execute
-record the Task ID in the plugin-local `.rh-task-history` folder. Files
-are named by a digest and contain a readable `taskId`. They are ignored
-by Git; they do not include your API key, prompt or media files.
-
-If generation monitoring times out or ComfyUI closes after submission,
-open the latest local JSON record and copy its `taskId`. Use your existing
-**RH Task Manager** node with **Get Status**, or **RH Download Results**
-with the same RH Config and the saved Task ID. This checks/downloads
-the existing task instead of creating a new paid task. Never restart the
-RH Execute node solely to retrieve an already-created result.
-
-A transport failure before RH returns a Task ID remains uncertain and
-cannot be automatically reconciled; inspect the RH website's task
-history before considering a manual retry. A batch now stops on its first
-failed submission and reports all earlier confirmed IDs rather than
-continuing blindly. This is a deliberate safety change.
-
-### 3B. Choose the RunningHub execution instance
-
-`RH Execute` now uses `Instance Type` with four choices:
-`auto`, `default`, `plus`, `ultra`. `auto` omits the RH
-`instanceType` field and preserves the previous unchecked
-High Performance behavior. `default` is explicit 24 GB,
-`plus` is 48 GB, `ultra` is 84 GB. The same setting is optional
-on `RH Batch Execute`.
-
-Saved old Execute graphs automatically convert High Performance
-`false → auto`, `true → plus`. If the old Boolean widget had an
-external link, migration stops and warns instead of losing the
-connection: keep the original workflow and migrate that link manually.
-API-format prompts must be exported again after graph migration.
-Your RH membership does not by itself prove which API instances your
-account can run or how usage is charged; verify before a paid task.
-
 ### 3A. Inspect cloud fields before generating (optional, recommended)
 
 Use the new **RH Workflow Inspect** node to check a RunningHub workflow's
@@ -102,6 +65,52 @@ The inspector only supports RH **workflows**, not AI Apps. Local JSON is
 an offline snapshot, not proof that RH's online workflow is unchanged.
 The updated Python nodes require a ComfyUI backend restart before appearing
 in the live UI; preserve a copy of the existing workflow before updating.
+
+### 3B. Choose the RunningHub execution instance
+
+`RH Execute` now uses `Instance Type` with four choices:
+`auto`, `default`, `plus`, `ultra`. `auto` omits the RH
+`instanceType` field and preserves the previous unchecked
+High Performance behavior. `default` is explicit 24 GB,
+`plus` is 48 GB, `ultra` is 84 GB. The same setting is optional
+on `RH Batch Execute`.
+
+Saved old Execute graphs automatically convert High Performance
+`false → auto`, `true → plus`. If the old Boolean widget had an
+external link, migration stops and warns instead of losing the
+connection: keep the original workflow and migrate that link manually.
+API-format prompts must be exported again after graph migration.
+Your RH membership does not by itself prove which API instances your
+account can run or how usage is charged; verify before a paid task.
+
+### 3C. Recover a created task without submitting another paid run
+
+After RunningHub confirms task creation, RH Execute and RH Batch Execute
+record the Task ID in the plugin-local `.rh-task-history` folder. Files
+are named by a digest and contain a readable `taskId`. They are ignored
+by Git; they do not include your API key, prompt or media files.
+
+If generation monitoring times out or ComfyUI closes after submission,
+open the latest local JSON record and copy its `taskId`. Use your existing
+**RH Task Manager** node with **Get Status**, or **RH Download Results**
+with the same RH Config and the saved Task ID. This checks/downloads
+the existing task instead of creating a new paid task. Never restart the
+RH Execute node solely to retrieve an already-created result.
+
+A transport failure before RH returns a Task ID remains uncertain and
+cannot be automatically reconciled; inspect the RH website's task
+history before considering a manual retry. A batch now stops on its first
+failed submission and reports all earlier confirmed IDs rather than
+continuing blindly. This is a deliberate safety change.
+
+### 3D. Download failures are not media results
+
+`RH Download Results` now stops with a visible error when a remote
+task or output fails to download or convert. It no longer substitutes
+artificial images and prints a misleading successful batch message.
+Already preserved original files remain intact. Use the existing Task
+ID (or the local task journal) to retry the **download** after fixing
+the issue; this does not create another paid RH generation.
 
 ## 4. Override text parameters
 

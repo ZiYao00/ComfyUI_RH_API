@@ -339,6 +339,24 @@ IDs remain available in the local journal when the batch output fails.
 Tests use fake responses and temporary journal directories; no RH paid
 tasks have been created to exercise these paths in the user's live account.
 
+### RH Download failure transparency (2026-10-13; stage C1)
+
+`nodes/rh_download.py` now reports failures as actual node errors.
+Its prior behavior returned fabricated placeholder images and an
+`ERROR` text value, then aggregated a failed batch and could print
+`Batch Download completed successfully`. On a failed remote task,
+download, media conversion or missing output, the node now **raises**
+with the Task ID. In a batch, completed read-only downloads may have
+preserved their original files already, but failed entries stop the
+final `torch.cat` media aggregation; no fake IMAGE/VIDEO/latent values
+are returned. Successful output port names, order and datatypes remain
+unchanged.
+
+The existing RH task journal records confirmed Task IDs before polling,
+so an operator can retry read-only download for an existing paid task
+without creating another cloud generation. A failing download is not
+a reason to rerun RH Execute automatically.
+
 ## 12. Deferred follow-up backlog
 
 The current maintenance cycle is intentionally closed without forcing tests that the present environment cannot run. The following items are deferred rather than treated as release blockers:

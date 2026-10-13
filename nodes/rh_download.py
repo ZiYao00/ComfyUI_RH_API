@@ -4,7 +4,7 @@ RH_Download Node - Download results from a RunningHub task
 
 import torch
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from .rh_utils import _monitor_task, _get_outputs, _create_placeholder_image, _create_placeholder_latent
+from .rh_utils import _monitor_task, _get_outputs
 
 class RH_Download:
     """
@@ -59,16 +59,11 @@ class RH_Download:
                 raise Exception("Task completed with no output.")
             print(f"    ✓ Task {task_id} processed successfully.")
             return outputs
-        except Exception as e:
-            print(f"    ❌ Failed to process task {task_id}: {e}")
-            return (
-                _create_placeholder_image(f"Failed: {task_id}"),
-                _create_placeholder_image("Failed"),
-                f"ERROR: {e}",
-                None,
-                None,
-                _create_placeholder_latent()
-            )
+        except Exception as exc:
+            raise RuntimeError(
+                f"RH task {task_id} could not be downloaded or processed "
+                f"({type(exc).__name__}). Check the original saved files and task ID."
+            ) from exc
 
     def download(self, config, task_id, timeout=600, save_to_local=True, output_prefix="RH_DL"):
         if not task_id or not task_id.strip():
@@ -92,6 +87,7 @@ class RH_Download:
         print("=" * 60)
 
         all_results = [None] * len(task_ids)
+        failures = []
 
         if is_batch:
             with ThreadPoolExecutor(max_workers=min(10, len(task_ids))) as executor:
@@ -103,18 +99,23 @@ class RH_Download:
                     index = future_to_index[future]
                     try:
                         all_results[index] = future.result()
-                    except Exception as e:
-                        print(f"    ❌ An unexpected exception occurred for task at index {index}: {e}")
-                        all_results[index] = (
-                            _create_placeholder_image(f"Failed: {task_ids[index]}"),
-                            _create_placeholder_image("Failed"),
-                            f"ERROR: {e}",
-                            None,
-                            None,
-                            _create_placeholder_latent()
-                        )
+                    except Exception as exc:
+                        # Keep confirmed task IDs and do not fabricate a
+                        # successful IMAGE or VIDEO when an asset failed.
+                        failures.append((index, task_ids[index], type(exc).__name__))
+
         else:
             all_results[0] = self._process_single_task(task_ids[0], config, timeout, save_to_local, output_prefix)
+
+        if failures:
+            details = ", ".join(
+                f"item {index + 1} task {task}: {reason}"
+                for index, task, reason in sorted(failures)
+            )
+            raise RuntimeError(
+                f"RH download failed for {len(failures)}/{len(task_ids)} tasks. "
+                f"{details}. No fake media outputs were produced."
+            )
 
         # Aggregate results
         final_images = torch.cat([res[0] for res in all_results], dim=0)

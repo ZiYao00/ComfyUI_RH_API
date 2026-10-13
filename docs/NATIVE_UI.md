@@ -210,6 +210,54 @@ ComfyUI 后端及云端视频生成已完成验收。
 不再悄悄跳过并返回残缺批次。已有节点 ID、端口和保存值
 均保持不变。以上为本地模拟验证，未执行真实云端上传或付费任务。
 
+### 2026-10-13：本机 8190 实测与 V3 Lab 归档
+
+本轮只使用测试包 `G:\AIGC\ComfyUI_test`，启动独立 Core
+`0.39.0`、Frontend `1.55.14`，CPU 模式、仅监听
+`127.0.0.1:8190`。其 `custom_nodes/ComfyUI_RH_API` 是指向
+本 Git 仓库的 Junction；主包 `:8188` 未重启或变更。
+
+验证命令（服务已启动后）：
+
+```bash
+python -B tests/probe_live_8190.py
+node tests/probe_live_ui_8190.mjs
+```
+
+**8190 真后端：PASS。** `/object_info` 确认 Execute、Inspect、
+Params V2、Upload Image V2、Download、Batch 等真实注册，
+`instance_type`、`video_frame_mode`、`workflow_schema`
+和旧的 7/6 输出契约均存在。真实 `/prompt` 只包含
+`RH_Config + RH_WorkflowInspect`，使用伪凭证和临时本地 JSON，
+`local_file` 检查执行成功。没有 RH 上传、生成或付费请求。
+
+**8190 真浏览器：12 项 PASS（受限范围）。** 验证原生节点创建、
+设置、连线、LiteGraph 序列化/恢复，以及原迁移模块
+`Boolean true -> plus` 和旧 widget 值保留。
+全新独立浏览器 profile 没有 activeWorkflow；
+直接调用官方 `app.loadGraphData` 时，测试环境的
+CanvasStore 提示 `getCanvas: canvas is null`。
+为避免修改第三方插件/前端，使用 `app.graph.configure`
+完成本轮快照恢复验收；**不要把它视为 8190 官方
+Save/Open/F5 完整流程 PASS**。隔离前端工作流加载测试
+仍是另一个独立的 PASS 证据。
+
+`nodes/rh_multi_param.py` 虽有 `RH_MultiParams` 源码和 C3
+单元测试，但**未出现在主插件 NODE_CLASS_MAPPINGS**；
+当前实际可创建的多参数节点是 `RH_Params2`。
+不要声称 `RH_MultiParams` 已在 UI 注册。
+
+旧独立研究仓库 `G:\GitHub\ComfyUI_RH_API-v3-lab`
+已确认不被 8188/8190 加载，且正式项目已拥有 V3 原生机制。
+清理前完整归档 69 个文件（包括独立 .git 和 6 个未提交文件）：
+`G:\AIGC\ComfyUI_test\_backups\ComfyUI_RH_API-v3-lab_20261013.zip`，
+验证所有归档条目可读取后，仅将原目录送入 Windows 回收站，
+未永久删除归档或更改主项目。
+
+**仍待真实验收：** 用户主动在 8190 打开旧工作流的完整
+Save/Open/F5、实际 RH Plus 云端任务与原始 MP4/VIDEO 下载。
+不允许自动重试有可能计费的 create-task 请求。
+
 ## 6. 官方依据
 
 - [ComfyUI V3 迁移、MultiType 与动态输入](https://docs.comfy.org/custom-nodes/v3_migration)

@@ -47,34 +47,41 @@ class RH_MultiInputImage:
         if previous_params:
             params_list.extend(previous_params)
 
-        new_params_count = 0
+        # Check every active routing before making even the first upload.
+        # A missing image mapping must not produce a partial paid task later.
+        rows = []
         for i in range(1, self.MAX_UPLOADS + 1):
             image_tensor = kwargs.get(f"image_{i}")
-            node_id = kwargs.get(f"node_id_{i}")
-            field_name = kwargs.get(f"field_name_{i}")
+            if image_tensor is None:
+                continue
+            node_id = str(kwargs.get(f"node_id_{i}") or "").strip()
+            field_name = kwargs.get(f"field_name_{i}", "image")
+            field_name = str(field_name or "").strip()
+            if not node_id:
+                raise ValueError(f"RH MultiInputImage image_{i} is connected but node_id_{i} is empty.")
+            if not field_name:
+                raise ValueError(f"RH MultiInputImage image_{i} has no field_name_{i}.")
+            rows.append((i, image_tensor, node_id, field_name))
 
-            if image_tensor is not None:
-                if not node_id or not str(node_id).strip():
-                    print(f"[Error] RH_MultiInputImage: Image_{i} is connected, but its node_id_{i} is missing. This input will be skipped.")
-                    continue
-
-                img_np = image_tensor.cpu().numpy()
-                img_pil = Image.fromarray((img_np.squeeze(0) * 255).astype(np.uint8))
-                buffer = io.BytesIO()
-                img_pil.save(buffer, format='PNG')
-
-                rh_file_path = upload_file_to_rh(
-                    api_key=api_key, base_url=base_url, file_buffer=buffer,
-                    file_name=f"multi_input_{i}.png", content_type='image/png', file_type='image'
+        new_params_count = 0
+        for i, image_tensor, node_id, field_name in rows:
+            img_np = image_tensor.cpu().numpy()
+            img_pil = Image.fromarray((img_np.squeeze(0) * 255).astype(np.uint8))
+            buffer = io.BytesIO()
+            img_pil.save(buffer, format="PNG")
+            rh_file_path = upload_file_to_rh(
+                api_key=api_key, base_url=base_url, file_buffer=buffer,
+                file_name=f"multi_input_{i}.png", content_type="image/png", file_type="image"
+            )
+            if not rh_file_path:
+                raise RuntimeError(
+                    f"RH MultiInputImage image_{i} upload failed; aborting incomplete RH_PARAMS."
                 )
-
-                if rh_file_path:
-                    param = {"nodeId": str(node_id).strip(), "fieldName": field_name, "fieldValue": rh_file_path}
-                    params_list.append(param)
-                    new_params_count += 1
-                    print(f"[Info] RH_MultiInputImage: Prepared image_{i} for node_id: {node_id}")
-                else:
-                    print(f"[Error] RH_MultiInputImage: Failed to upload image {i} for node {node_id}. Skipping.")
+            params_list.append({
+                "nodeId": node_id, "fieldName": field_name, "fieldValue": rh_file_path
+            })
+            new_params_count += 1
+            print(f"RH MultiInputImage: Prepared image_{i} for Node {node_id}.{field_name}")
 
         if new_params_count == 0 and not previous_params:
             print("[Warning] RH_MultiInputImage: No new images were processed and no previous params were provided.")

@@ -89,11 +89,17 @@ class RH_Param:
         params = list(previous_params) if previous_params else []
 
         # Use custom field name if field_name is 'custom' and custom_field_name is provided
-        actual_field_name = field_name
-        if field_name == "custom" and custom_field_name.strip():
-            actual_field_name = custom_field_name.strip()
-        elif field_name == "custom" and not custom_field_name.strip():
-            print("⚠ Warning: field_name is 'custom' but custom_field_name is empty. Using 'custom' as field name.")
+        node_id = str(node_id or "").strip()
+        if not node_id:
+            raise ValueError("RH Param requires a target Node ID.")
+        actual_field_name = str(field_name or "").strip()
+        if field_name == "custom" and str(custom_field_name or "").strip():
+            actual_field_name = str(custom_field_name).strip()
+        elif field_name == "custom":
+            raise ValueError("RH Param Custom Field is empty. Enter the exact RH API field name.")
+
+        if not actual_field_name:
+            raise ValueError("RH Param field name cannot be empty.")
 
         # Add new parameter
         new_param = {
@@ -104,7 +110,7 @@ class RH_Param:
 
         params.append(new_param)
 
-        print(f"✓ RH Param added: Node {node_id}.{actual_field_name} = {field_value[:50]}{'...' if len(str(field_value)) > 50 else ''}")
+        print(f"✓ RH Param added: Node {node_id}.{actual_field_name}")
 
         return (params,)
 

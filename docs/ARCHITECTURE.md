@@ -398,6 +398,35 @@ probe isolated unrelated Core/audio initialization. This is **not** an
 end-to-end user-backend test, and real RunningHub video generation/output
 conversion remains pending separate permission and environment validation.
 
+### Fail-closed parameter and image uploads (2026-10-13; stage C3)
+
+The legacy `RH_Param` now rejects missing Node IDs, missing Field
+names and an empty Custom Field instead of emitting
+`fieldName=custom`. The `RH_MultiParams` node continues to ignore
+truly unused rows (including untouched `text` dropdown defaults),
+but rejects partially configured rows and empty Custom Fields instead
+of silently excluding them. Empty field values remain valid for
+intentionally clearing remote text widgets. Prompt values are not
+printed in ordinary parameter logs.
+
+`RH_MultiInputImage` validates **every connected image's Node ID and
+Field before uploading any media**. The former behavior skipped
+connected images without a Node ID; this could create an incomplete
+RH_PARAMS list and then a charged remote task. On any upload failure,
+the node now raises instead of returning an apparently valid partial
+list. `RH_BatchUploadImage` also rejects blank target Node/Field, an
+empty active batch and any failed image upload; it never silently
+drops a failed run from a paid batch. Previously uploaded individual
+files may remain on RH after a later upload error, but **paid task
+creation is not attempted by these nodes** after that error.
+
+These changes intentionally strengthen validation while preserving all
+existing node IDs, widgets, output types and ordering. `RH_UploadImage2`
+already prevalidates its connected image routes and is unchanged here.
+Mocked tests include malformed late inputs, mid-batch upload failures,
+empty rows, zero/blank values and successful multi-image output.
+No media uploads or paid RH generation calls were executed.
+
 ## 12. Deferred follow-up backlog
 
 The current maintenance cycle is intentionally closed without forcing tests that the present environment cannot run. The following items are deferred rather than treated as release blockers:

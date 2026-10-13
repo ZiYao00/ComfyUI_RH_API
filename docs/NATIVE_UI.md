@@ -197,6 +197,19 @@ IMAGE 端口仍使用兼容占位图，不能当作视频实际帧使用。
 隔离了与测试无关的 Core/音频导入；不能据此声称实际 8188
 ComfyUI 后端及云端视频生成已完成验收。
 
+### 2026-10-13 C3：旧参数及上传节点防止静默漏参
+
+`RH Param` 的 Custom Field 留空不再回退发送 `custom`。
+`RH MultiParams` 对完全未使用的空白行继续跳过；只要该行
+填写了 Node、Value、非默认 Field 或 Custom Field，就必须校验
+完整性，不能警告后静默丢弃。
+
+`RH Multi-Input Image` 现在会在上传任何一张图片之前，
+统一核对所有已连接图片的 Node ID/Field；任一缺失直接报错。
+`RH Batch Upload Image` 缺少目标、没有图片或某项上传失败，
+不再悄悄跳过并返回残缺批次。已有节点 ID、端口和保存值
+均保持不变。以上为本地模拟验证，未执行真实云端上传或付费任务。
+
 ## 6. 官方依据
 
 - [ComfyUI V3 迁移、MultiType 与动态输入](https://docs.comfy.org/custom-nodes/v3_migration)

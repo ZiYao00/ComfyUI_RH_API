@@ -159,6 +159,23 @@ Image / Video / Audio can optionally append the returned RH filename to `RH_PARA
 
 `RH Upload Image V2` starts with Image 1. Connecting it reveals Image 2; each connected last slot reveals another native IMAGE input together with its independent Node / Field / Custom Field controls, up to 12 slots. A trailing unconfigured row can disappear after disconnection; disconnected rows containing a target mapping stay visible, and sparse numbers never shift. `Image Count` is hidden, not deleted from the saved V3 group/prompt contract, so older saved workflows still load. No Enable switch or handwritten HTML form is used. The single-image `RH Upload Image` and the unregistered `RH_UploadMask` are unchanged.
 
+### 5A. Invalid mappings stop instead of being silently omitted
+
+For `RH Param` and `RH MultiParams`, provide a real **Node ID**
+and **Field** for each configured row. If Field is `custom`, enter
+the actual API field name (for H3 Node 28, use `prompt`, not `text`).
+Completely blank MultiParams rows are still ignored. A configured
+row missing its Node ID or Custom Field now fails visibly.
+
+For `RH Multi-Input Image`, every connected IMAGE must have its own
+Node ID and Field. All connected routes are checked **before the first
+upload**; one incomplete slot blocks the whole group.
+`RH Batch Upload Image` likewise stops if the shared routing is
+missing, no images are connected or one upload fails. It no longer
+silently submits fewer runs than requested. Fix the mapping and
+rerun only after checking which uploaded remote files may already
+exist. These checks happen before any paid RH Execute task is created.
+
 ## 6. Understand output saving
 
 The connector is raw-first:

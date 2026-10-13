@@ -41,35 +41,37 @@ class RH_BatchUploadImage:
         base_url = config.get("base_url")
         batch_bundle = []
 
+        node_id = str(node_id or "").strip()
+        field_name = str(field_name or "").strip()
         if not node_id:
-            print("[Error] RH_BatchUploadImage: 'node_id' is required.")
-            return ([],)
+            raise ValueError("RH BatchUploadImage requires Node ID before uploading images.")
+        if not field_name:
+            raise ValueError("RH BatchUploadImage requires Field before uploading images.")
 
-        for i in range(1, self.MAX_UPLOADS + 1):
-            image_tensor = kwargs.get(f"image_{i}")
-            if image_tensor is not None:
-                # Convert tensor to PIL Image
-                img_np = image_tensor.cpu().numpy()
-                img_pil = Image.fromarray((img_np.squeeze(0) * 255).astype(np.uint8))
+        connected = [
+            (i, kwargs.get(f"image_{i}"))
+            for i in range(1, self.MAX_UPLOADS + 1)
+            if kwargs.get(f"image_{i}") is not None
+        ]
+        if not connected:
+            raise ValueError("RH BatchUploadImage has no connected images.")
 
-                buffer = io.BytesIO()
-                img_pil.save(buffer, format='PNG')
-
-                rh_file_path = upload_file_to_rh(
-                    api_key=api_key, base_url=base_url, file_buffer=buffer, # Pass the buffer object directly
-                    file_name=f"batch_upload_{i}.png", content_type='image/png', file_type='image'
+        for i, image_tensor in connected:
+            img_np = image_tensor.cpu().numpy()
+            img_pil = Image.fromarray((img_np.squeeze(0) * 255).astype(np.uint8))
+            buffer = io.BytesIO()
+            img_pil.save(buffer, format="PNG")
+            rh_file_path = upload_file_to_rh(
+                api_key=api_key, base_url=base_url, file_buffer=buffer,
+                file_name=f"batch_upload_{i}.png", content_type="image/png", file_type="image"
+            )
+            if not rh_file_path:
+                raise RuntimeError(
+                    f"RH BatchUploadImage image_{i} upload failed; incomplete batch aborted."
                 )
-
-                if rh_file_path:
-                    param = {"nodeId": node_id, "fieldName": field_name, "fieldValue": rh_file_path}
-                    # Each param set is a list of dicts for one run. Here, it's just one param.
-                    batch_bundle.append([param])
-                else:
-                    print(f"[Error] Failed to upload image {i}. Skipping this run.")
-
-        if not batch_bundle:
-            print("[Warning] RH_BatchUploadImage: No images were processed.")
-            return ([],)
+            batch_bundle.append([{
+                "nodeId": node_id, "fieldName": field_name, "fieldValue": rh_file_path
+            }])
 
         print(f"[Info] Bundled {len(batch_bundle)} runs for batch execution.")
         return (batch_bundle,)

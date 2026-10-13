@@ -329,6 +329,30 @@ check(app.graph._nodes.some(n => n.type === 'RH_MigrationRequired'), 'Invalid mi
 check(migrationAlert.includes('original file'), 'Invalid migration displays an explicit warning');
 check(JSON.stringify(malformed) === malformedBefore, 'Invalid migration does not mutate the supplied original workflow');
 
+// New V3 inspector must remain an ordinary, serializable ComfyUI node.
+// No backend request is made: this suite checks graph UI and link contracts.
+await app.extensionManager.command.execute('Comfy.NewBlankWorkflow');
+app.graph.clear();
+const inspectNode = create('RH_WorkflowInspect', [60, 80]);
+const inspectExecute = create('RH_Execute', [560, 80]);
+check(inspectNode.outputs?.[0]?.type === 'RH_WORKFLOW_SCHEMA', 'Inspector exposes RH_WORKFLOW_SCHEMA output');
+check(!!widget(inspectNode, 'source_mode') && !!widget(inspectNode, 'node_filter'), 'Inspector provides native field-inspection controls');
+const inspectSlot = inspectExecute.inputs.findIndex(item => item.name === 'workflow_schema');
+check(inspectSlot >= 0 && inspectExecute.inputs[inspectSlot].type === 'RH_WORKFLOW_SCHEMA', 'Execute exposes optional workflow_schema socket');
+check(!!inspectNode.connect(0, inspectExecute, inspectSlot), 'Inspector connects to Execute without changing RH_PARAMS');
+const inspectWorkflow = structuredClone(app.graph.serialize());
+const inspectNodeId = inspectNode.id;
+const inspectExecuteId = inspectExecute.id;
+await app.loadGraphData(inspectWorkflow);
+check(app.graph.getNodeById(inspectNodeId)?.outputs?.[0]?.type === 'RH_WORKFLOW_SCHEMA' &&
+    app.graph.getNodeById(inspectExecuteId)?.inputs?.find(item => item.name === 'workflow_schema')?.link != null,
+    'Inspector connection survives native workflow save/load');
+const restoredInspect = app.graph.getNodeById(inspectNodeId);
+const restoredExecute = app.graph.getNodeById(inspectExecuteId);
+restoredExecute.disconnectInput(restoredExecute.inputs.findIndex(item => item.name === 'workflow_schema'));
+check(restoredExecute.inputs.find(item => item.name === 'workflow_schema')?.link == null &&
+    restoredInspect?.outputs?.[0]?.type === 'RH_WORKFLOW_SCHEMA', 'Inspector can disconnect cleanly');
+
 // Final compact scene contains the four most frequently used node types.
 await app.extensionManager.command.execute('Comfy.NewBlankWorkflow');
 app.graph.clear();

@@ -60,6 +60,60 @@ class RHWorkflowSchema:
         }
 
 
+
+@dataclass(frozen=True)
+class RHWorkflowInspection:
+    """Ephemeral schema with proof of which RH configuration it belongs to.
+
+    Credential scope and source values are never serialized to a workflow JSON.
+    """
+
+    schema: RHWorkflowSchema
+    workflow_id: str
+    base_url: str
+    credential_scope: str = field(repr=False)
+    checked_at: float = field(repr=False)
+    remote_verified: bool = False
+
+    @classmethod
+    def bind(cls, schema: RHWorkflowSchema, config: Mapping, *, remote_verified: bool):
+        import hmac
+        import time
+
+        if not isinstance(config, dict) or config.get("is_ai_app"):
+            raise ValueError("Workflow inspection supports RH workflows, not AI Apps.")
+        required = ("api_key", "base_url", "workflow_or_app_id")
+        if any(not config.get(name) for name in required):
+            raise ValueError("RH Config is missing credentials or workflow identity.")
+        workflow_id = str(config["workflow_or_app_id"]).strip()
+        base_url = str(config["base_url"]).strip().rstrip("/").lower()
+        if not workflow_id or not base_url:
+            raise ValueError("Workflow inspection requires a workflow ID and API endpoint.")
+        scope = hmac.new(
+            str(config["api_key"]).encode("utf-8"),
+            ("rh-inspection:" + base_url + ":" + workflow_id).encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+        return cls(
+            schema=schema,
+            workflow_id=workflow_id,
+            base_url=base_url,
+            credential_scope=scope,
+            checked_at=time.monotonic(),
+            remote_verified=remote_verified,
+        )
+
+    def assert_matches(self, config: Mapping, *, max_age_seconds: int = 1800) -> None:
+        import hmac
+        import time
+
+        current = type(self).bind(self.schema, config, remote_verified=self.remote_verified)
+        if (self.workflow_id != current.workflow_id or self.base_url != current.base_url
+                or not hmac.compare_digest(self.credential_scope, current.credential_scope)):
+            raise ValueError("RH schema belongs to a different workflow, domain or account. Reinspect before execution.")
+        if time.monotonic() - self.checked_at > max_age_seconds:
+            raise ValueError("RH workflow inspection is stale. Reinspect before execution.")
+
 @dataclass
 class RHValidationReport:
     errors: list[str] = field(default_factory=list)

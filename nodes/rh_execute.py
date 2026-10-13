@@ -6,6 +6,7 @@ Simplified execution with automatic progress tracking and output handling
 # Import shared logic from rh_utils
 from .rh_utils import _monitor_task, _get_outputs, _create_placeholder_image, _create_placeholder_latent
 from .rh_client import RHClient, RHTaskSubmissionUncertainError
+from .rh_workflow_schema import RHWorkflowInspection, validate_node_info_list
 
 try:
     import comfy.utils
@@ -65,7 +66,7 @@ class RH_Execute:
     OUTPUT_NODE = True
     
     def execute(self, config, params=None, timeout=600, use_high_performance=False,
-                save_to_local=True, output_prefix="RH"):
+                save_to_local=True, output_prefix="RH", workflow_schema=None):
         """
         Execute RunningHub workflow or AI app
 
@@ -88,6 +89,21 @@ class RH_Execute:
         self._validate_config(config)
         
         # Create task
+        # Opt-in validation of final merged overrides before the paid POST.
+        # Upstream media uploads may already have occurred; run RH Workflow
+        # Inspect separately for no-upload/manual preflight.
+        if workflow_schema is not None:
+            if not isinstance(workflow_schema, RHWorkflowInspection):
+                raise ValueError("workflow_schema must come from RH Workflow Inspect.")
+            workflow_schema.assert_matches(config)
+            report = validate_node_info_list(workflow_schema.schema, params or [])
+            if not report.ok:
+                raise ValueError(report.explain())
+            if not workflow_schema.remote_verified:
+                print("Warning: RH validation uses a local JSON snapshot, not the current cloud definition.")
+            if report.warnings:
+                print(report.explain())
+
         task_id = self._create_task(config, params or [], use_high_performance)
         print(f"✓ Task created: {task_id}")
         

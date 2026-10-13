@@ -113,6 +113,76 @@ class TaskSubmissionTests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         self.assertIn("Do not auto-retry", str(context.exception))
 
+    def test_preflight_bad_route_blocks_paid_task_creation(self):
+        requests = make_requests_stub()
+        calls = []
+        requests.post = lambda *args, **kwargs: calls.append((args, kwargs))
+        module = load_rh_execute(requests)
+        schema_module = sys.modules[module.__package__ + ".rh_workflow_schema"]
+        parsed = schema_module.parse_workflow_api_json({
+            "28": {"class_type": "CR Prompt Text", "inputs": {"prompt": "default"}}
+        })
+        settings = {
+            "api_key": "[REDACTED]",
+            "base_url": "https://www.runninghub.ai",
+            "workflow_or_app_id": "example-workflow",
+            "is_ai_app": False,
+        }
+        inspection = schema_module.RHWorkflowInspection.bind(parsed, settings, remote_verified=True)
+        with self.assertRaises(ValueError) as result:
+            module.RH_Execute().execute(
+                settings,
+                params=[{"nodeId": "28", "fieldName": "text", "fieldValue": "hello"}],
+                workflow_schema=inspection,
+            )
+        self.assertIn("28.prompt", str(result.exception))
+        self.assertEqual(calls, [])
+
+    def test_preflight_correct_route_keeps_payload_and_legacy_behavior(self):
+        from unittest.mock import patch
+        requests = make_requests_stub()
+        module = load_rh_execute(requests)
+        schema_module = sys.modules[module.__package__ + ".rh_workflow_schema"]
+        parsed = schema_module.parse_workflow_api_json({
+            "28": {"class_type": "CR Prompt Text", "inputs": {"prompt": "default"}}
+        })
+        settings = {
+            "api_key": "[REDACTED]",
+            "base_url": "https://www.runninghub.ai",
+            "workflow_or_app_id": "example-workflow",
+            "is_ai_app": False,
+        }
+        inspection = schema_module.RHWorkflowInspection.bind(parsed, settings, remote_verified=True)
+        params = [{"nodeId": "28", "fieldName": "prompt", "fieldValue": "hello"}]
+        with patch.object(module.RH_Execute, "_create_task", return_value="task-stub") as create:
+            result = module.RH_Execute().execute(settings, params=params, workflow_schema=inspection)
+            create.assert_called_once_with(settings, params, False)
+        self.assertEqual(result[-1], "task-stub")
+        self.assertEqual(params[0]["fieldValue"], "hello")
+
+    def test_preflight_cross_workflow_never_submits_task(self):
+        from unittest.mock import patch
+        requests = make_requests_stub()
+        module = load_rh_execute(requests)
+        schema_module = sys.modules[module.__package__ + ".rh_workflow_schema"]
+        parsed = schema_module.parse_workflow_api_json({
+            "28": {"class_type": "CR Prompt Text", "inputs": {"prompt": "default"}}
+        })
+        settings = {
+            "api_key": "[REDACTED]",
+            "base_url": "https://www.runninghub.ai",
+            "workflow_or_app_id": "example-workflow",
+        }
+        inspection = schema_module.RHWorkflowInspection.bind(parsed, settings, remote_verified=True)
+        with patch.object(module.RH_Execute, "_create_task") as create:
+            with self.assertRaisesRegex(ValueError, "different workflow"):
+                module.RH_Execute().execute(
+                    {**settings, "workflow_or_app_id": "unrelated-workflow"},
+                    params=[{"nodeId": "28", "fieldName": "prompt", "fieldValue": "hello"}],
+                    workflow_schema=inspection,
+                )
+            create.assert_not_called()
+
     def test_explicit_business_error_is_not_reported_as_uncertain(self):
         requests = make_requests_stub()
         requests.post = lambda *args, **kwargs: FakeResponse({

@@ -211,7 +211,7 @@ Current real-world validation status (2026-09-16):
 
 Also verify Chinese UTF-8 text, multiple outputs, no-output tasks, and a deliberate conversion/download failure path when practical.
 
-### Workflow field inspection (2026-10-13; stage A1)
+### Workflow field inspection (2026-10-13; stages A1 and A2)
 
 `nodes/rh_workflow_schema.py` now parses ComfyUI API-format graphs or the RH
 `getJsonApiFormat` envelope into an in-memory index of exact
@@ -228,14 +228,43 @@ must explicitly request the query; no implicit fetch occurs during workflow
 load, save, or execution. The client returns the upstream envelope only in
 memory and does not print response contents.
 
-**Execution gate:** stage A1 is implemented as a separate parser / client method
-and unit-tested; it is **not yet connected** to `RH_Execute` or the UI. Do
-not claim that RH tasks are currently prevented from using invalid cloud
-fields. Before enabling strict submission blocking, compare against the real
-cloud schema for the matching account, domain, workflow ID and version, and
-implement an explicit fallback for missing or stale metadata. AI Apps remain
-outside this workflow-only inspector. The baseline node schemas and task
-submission payload have not been changed.
+**A2 opt-in execution gate:** `RH_WorkflowInspect` is a new native V3
+read-only node with `RH_CONFIG` input and `RH_WORKFLOW_SCHEMA` plus STRING
+`field_report` outputs. Its `remote` source fetches metadata from RH;
+`local_file` reads a manually exported API-format JSON for an offline
+snapshot, without networking. Manual `overrides_json` and `node_filter`
+make its field inspection useful without depending on Upload nodes.
+The V3 fingerprint forces a new metadata check each time the inspector
+is explicitly executed.
+
+`RH_Execute.workflow_schema` is an **optional new socket appended to
+the existing native inputs**. If connected, `RH_Execute2` merges its usual
+RH_PARAMS sources and `RH_Execute` validates the final list before the
+single paid create-task POST. Wrong `nodeId/fieldName`, stale metadata
+(30-minute window), another workflow/domain/account and invalid value
+types fail visibly. Cloud mode uses a fresh definition; local-file mode
+warns that it could differ from RH. AI Apps are not supported by this
+workflow-only inspector. Unconnected older Execute nodes keep their
+existing task submission behavior, widget values, inputs and outputs.
+
+**Important execution distinction:** a standalone inspector does not upload
+files or create paid tasks, but **ComfyUI Queue can run other OUTPUT_NODEs
+on the same graph**. To do an absolutely no-upload/no-paid manual inspection,
+use an inspection-only workflow file containing `RH_Config` and
+`RH_WorkflowInspect`, without an RH Execute or Upload branch. Connecting
+the inspector to RH Execute enables pre-**paid POST** blocking, not global
+pre-upload blocking: other upload nodes can already have executed.
+A2 does not automatically inspect every Params or Upload widget in a
+disconnected graph.
+
+**Real read-only metadata probe (2026-10-13):** the configured .ai account
+returned 50 nodes / 212 input fields for workflow `2109574959826993154`.
+Node 28 has `prompt` (not `text`); 7 has `width/height`; 27 has
+`value`; 111 has `image`. The live schema rejects wrong `28.text`
+and accepts the correct sample overrides. No media or task was submitted.
+Target Core 0.39.0 / Frontend 1.55.14 native-schema and isolated-browser
+tests passed. Existing running ComfyUI server has **not been restarted**
+to load A2, and real paid-task integration remains pending.
 
 Regression fixture: node 28 `CR Prompt Text` uses `prompt`, not `text`;
 other sample fields: node 7 `width/height`, node 27 `value`, node 111
@@ -249,7 +278,7 @@ The current maintenance cycle is intentionally closed without forcing tests that
 - **Real VIDEO regression:** pending until an environment capable of running the RH video workflow is available. After that test, decide whether legacy `video_frames` should support `all_frames`, `preview_only`, or `disabled` modes to reduce memory pressure.
 - **V2 upload A/B:** the V2 media-upload adapter exists, but Legacy remains the default until image/audio/video uploads are compared against the same real RH workflows.
 - **Result Manifest / `RH_RESULT_BUNDLE`:** add a structured result bundle when multi-file/multi-type workflows justify a new public node contract.
-- **Workflow Inspector:** use RH workflow metadata to reduce manual `node_id` / `field_name` entry only after the core connector remains stable in normal use.
+- **Smart Params UI field picker:** the A2 inspector is a separate node; automatically populating RH Params V2 field choices and detecting routes in the editor without queueing remains deferred to a separate frontend lifecycle review.
 - **Diagnostics surface:** add a compact task/output diagnostic report if future failures show that console logs are insufficient.
 
 Task creation (including batch submission), result queries/uploads, and task cancellation should continue to converge on `RHClient` rather than introducing new direct HTTP calls in node implementations.

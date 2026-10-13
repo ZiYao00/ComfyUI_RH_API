@@ -18,10 +18,12 @@ from .rh_upload_file import RH_UploadFile as FileUploader
 from .rh_upload_latent import RH_UploadLatent as LatentUploader
 from .rh_batch_upload_image import RH_BatchUploadImage as BatchImageUploader
 from .rh_multi_input_image import RH_MultiInputImage as MultiInputUploader
+from .rh_workflow_inspector import inspect_workflow
 
 CATEGORY = "Ken-Chen/RH-API"
 Config = io.Custom("RH_CONFIG")
 Params = io.Custom("RH_PARAMS")
+WorkflowSchema = io.Custom("RH_WORKFLOW_SCHEMA")
 SCALAR_TYPES = (str, int, float, bool)
 
 
@@ -181,6 +183,8 @@ def execute_schema(node_id: str, title: str, *, deprecated: bool = False):
                              tooltip="Also preserve RunningHub original files in the ComfyUI output directory."),
             io.String.Input("output_prefix", display_name="Output Prefix", default="RH", multiline=False,
                             tooltip="Prefix used only when RH original files are preserved."),
+            WorkflowSchema.Input("workflow_schema", optional=True,
+                                 tooltip="Optional RH Workflow Inspect result; validates overrides before paid tasks."),
         ],
         outputs=[
             io.Image.Output(display_name="images"),
@@ -203,7 +207,7 @@ class RH_ExecuteNative(io.ComfyNode):
 
     @classmethod
     def execute(cls, config, timeout=600, params=None,
-                use_high_performance=False, save_to_local=False, output_prefix="RH"):
+                use_high_performance=False, save_to_local=False, output_prefix="RH", workflow_schema=None):
         if params is None:
             sources = {}
         elif isinstance(params, dict):
@@ -219,6 +223,7 @@ class RH_ExecuteNative(io.ComfyNode):
             use_high_performance=use_high_performance,
             save_to_local=save_to_local,
             output_prefix=output_prefix,
+            workflow_schema=workflow_schema,
             **sources,
         )
         return io.NodeOutput(*result)
@@ -346,8 +351,45 @@ class RH_MultiInputImageNative(io.ComfyNode):
         return io.NodeOutput(*MultiInputUploader().upload_single_run(config, previous_params=previous_params, **arguments))
 
 
+class RH_WorkflowInspectNative(io.ComfyNode):
+    @classmethod
+    def define_schema(cls):
+        return io.Schema(
+            node_id="RH_WorkflowInspect",
+            display_name="RH Workflow Inspect",
+            category=CATEGORY,
+            description="Read-only RH fields. Use a separate inspection-only graph: Queue may also run other output nodes in the same workflow.",
+            inputs=[
+                Config.Input("config"),
+                io.Combo.Input("source_mode", display_name="Source", options=["remote", "local_file"], default="remote"),
+                io.String.Input("api_json_path", display_name="API JSON File", default="", optional=True,
+                                tooltip="Only for local_file. Export a ComfyUI API-format JSON."),
+                io.String.Input("node_filter", display_name="Node IDs", default="", optional=True,
+                                tooltip="Comma-separated node IDs, e.g. 28,7,27,111."),
+                io.String.Input("overrides_json", display_name="Manual nodeInfoList JSON", default="", multiline=True,
+                                optional=True, advanced=True, tooltip="Manually check overrides without uploading files."),
+            ],
+            outputs=[WorkflowSchema.Output(display_name="schema"), io.String.Output(display_name="field_report")],
+            is_output_node=True,
+        )
+
+    @classmethod
+    def fingerprint_inputs(cls, **kwargs):
+        # Remote workflow definitions can change while widgets remain unchanged.
+        return float("nan")
+
+    @classmethod
+    def execute(cls, config, source_mode="remote", api_json_path="", node_filter="", overrides_json=""):
+        inspection, report = inspect_workflow(
+            config, source_mode=source_mode, api_json_path=api_json_path,
+            node_filter=node_filter, overrides_json=overrides_json,
+        )
+        return io.NodeOutput(inspection, report)
+
+
 NATIVE_NODE_CLASS_MAPPINGS = {
     "RH_Execute": RH_ExecuteNative,
+    "RH_WorkflowInspect": RH_WorkflowInspectNative,
     "RH_Params2": RH_Params2Native,
     "RH_UploadImage2": RH_UploadImage2Native,
     "RH_UploadImage": RH_UploadImageNative,

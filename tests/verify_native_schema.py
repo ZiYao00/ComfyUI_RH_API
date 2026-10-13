@@ -37,6 +37,7 @@ def main():
         def test_all_ten_nodes_are_real_v3_and_keep_output_contracts(self):
             expected = {
                 "RH_Execute": ["IMAGE", "IMAGE", "STRING", "AUDIO", "VIDEO", "LATENT", "STRING"],
+                "RH_WorkflowInspect": ["RH_WORKFLOW_SCHEMA", "STRING"],
                 "RH_Params2": ["RH_PARAMS"], "RH_UploadImage2": ["RH_PARAMS"],
                 "RH_UploadImage": ["STRING", "RH_PARAMS"], "RH_UploadVideo": ["STRING", "RH_PARAMS"],
                 "RH_UploadAudio": ["STRING", "RH_PARAMS"], "RH_UploadFile": ["RH_PARAM"],
@@ -90,6 +91,30 @@ def main():
                 self.assertEqual(execute.call_args.kwargs["params"], base)
                 self.assertEqual(execute.call_args.kwargs["params_1"], extra)
                 self.assertFalse(execute.call_args.kwargs["save_to_local"])
+
+        def test_inspector_schema_and_optional_execute_wiring(self):
+            import math
+            inspection = definitions["RH_WorkflowInspect"]
+            self.assertEqual(inspection["output"], ["RH_WORKFLOW_SCHEMA", "STRING"])
+            self.assertIn("config", inspection["input"]["required"])
+            self.assertIn("source_mode", inspection["input"]["required"])
+            execute = definitions["RH_Execute"]["input"]
+            self.assertIn("workflow_schema", execute["optional"])
+            self.assertEqual(execute["optional"]["workflow_schema"][0], "RH_WORKFLOW_SCHEMA")
+            self.assertTrue(math.isnan(native.RH_WorkflowInspectNative.fingerprint_inputs()))
+
+            fake_schema = object()
+            with patch.object(native, "inspect_workflow", return_value=(fake_schema, "fields")) as inspect:
+                result = native.RH_WorkflowInspectNative.execute({"workflow_or_app_id": "x"})
+                self.assertIs(result.result[0], fake_schema)
+                self.assertEqual(result.result[1], "fields")
+                inspect.assert_called_once()
+
+            fake_outputs = (object(), object(), "", None, None, {"samples": object()}, "task")
+            with patch.object(native.ExecuteService, "execute", return_value=fake_outputs) as run:
+                result = native.RH_ExecuteNative.execute({}, workflow_schema=fake_schema)
+                self.assertEqual(result.result[-1], "task")
+                self.assertIs(run.call_args.kwargs["workflow_schema"], fake_schema)
 
         def test_audio_still_accepts_a_path_video_still_accepts_video(self):
             self.assertEqual(definitions["RH_UploadAudio"]["input"]["required"]["audio_path"][0], "STRING")

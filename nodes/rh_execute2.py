@@ -164,6 +164,7 @@ class RH_Execute2(RH_Execute):
         use_high_performance=False,
         save_to_local=False,
         output_prefix="RH",
+        workflow_schema=None,
         **kwargs,
     ):
         merged_params = self.merge_param_sources(params=params, dynamic_params=kwargs)
@@ -174,4 +175,5 @@ class RH_Execute2(RH_Execute):
             use_high_performance=use_high_performance,
             save_to_local=save_to_local,
             output_prefix=output_prefix,
+            workflow_schema=workflow_schema,
         )

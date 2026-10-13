@@ -32,6 +32,40 @@ Add `RH Execute`, connect `RH Config.config`, and queue the prompt.
 
 `RH Execute` waits for the RH task, preserves/stages the returned files, converts supported files to ComfyUI values, and returns the `task_id`. Its RH_PARAMS fan-in is one native Autogrow chain: by default only `params` is visible; connecting it reveals `params_1`, then `params_2`, and so on through `params_15` (16 sources total). Later sources override duplicate node/field pairs, matching the former Execute 2 behavior. Saved graph workflows from the old Execute layouts are migrated automatically; old API-format prompts should be re-exported from the migrated graph.
 
+### 3A. Inspect cloud fields before generating (optional, recommended)
+
+Use the new **RH Workflow Inspect** node to check a RunningHub workflow's
+actual API-format fields instead of guessing that every text node uses
+`fieldName=text`.
+
+For **no-upload/no-paid preflight**, make a separate, inspection-only ComfyUI
+workflow with `RH Config` connected to `RH Workflow Inspect`. Choose
+`remote` to query the official RH workflow metadata; select the matching
+regional `base_url` on `RH Config` (`.ai` or `.cn`). The `local_file`
+source can read an exported `api_format` JSON by its file path when the
+remote endpoint is unavailable. Enter comma-separated `Node IDs` such as
+`28,7,27,111` to list relevant fields. Optionally paste a JSON
+`nodeInfoList` into the advanced manual check field. The `field_report`
+STRING output can be connected to `RH Text Display`.
+
+**Caution:** global **Queue** executes other output nodes in the same
+graph. Do not queue a graph containing RH Execute while expecting an
+inspection-only/no-paid run. The inspector itself never uploads media or
+submits a paid task.
+
+After checking the fields, in the generation graph connect
+`RH Workflow Inspect.schema` to `RH Execute.workflow_schema`.
+This enables strict validation of the **final merged** RH_PARAMS before
+the paid create-task POST. An invalid `28.text` route fails with a
+`28.prompt` suggestion. Existing workflows with no schema connection
+execute as before. If an upstream upload is present, that upload can
+still run **before** Execute checks the final values.
+
+The inspector only supports RH **workflows**, not AI Apps. Local JSON is
+an offline snapshot, not proof that RH's online workflow is unchanged.
+The updated Python nodes require a ComfyUI backend restart before appearing
+in the live UI; preserve a copy of the existing workflow before updating.
+
 ## 4. Override text parameters
 
 Use `RH Param`:

@@ -109,6 +109,45 @@ node tests/verify_native_ui.mjs
 
 截图用于后续人工视觉确认；自动化交互通过不等于用户已接受外观。隔离浏览器 profile 和早期失败诊断保留，不自动递归删除。
 
+### 2026-10-13 A2: workflow field inspection and pre-paid gate
+
+A new V3 node `RH_WorkflowInspect` uses native widgets only. It has no
+media/RH_PARAMS inputs. `source_mode=remote` calls the RH read-only workflow
+JSON endpoint; `local_file` parses an API-format JSON export. `node_filter`
+accepts comma-separated node IDs and the advanced `overrides_json` field
+checks a manual nodeInfoList without running Upload nodes. Outputs are
+`RH_WORKFLOW_SCHEMA` (account/domain/workflow bound, 30-minute expiry)
+and `STRING field_report`. Connect field_report to the existing
+`RH_TextDisplay` for a console-readable listing.
+
+The extra `RH_Execute.workflow_schema` input is **optional** and comes
+after existing fixed widgets in the V3 schema. No existing widget name,
+position, fan-in, node ID or output index was changed; disconnected old
+graphs retain their behavior. When connected, Execute checks the merged
+list against exact cloud field names before the paid create-task POST.
+It does **not** promise pre-upload safety in a generation graph.
+
+**Operational trap:** `RH Workflow Inspect` is also an OUTPUT_NODE so
+it can run alone. ComfyUI's full Queue can execute other output nodes
+(e.g. RH Execute) in the *same graph*. For a guaranteed no-paid
+manual check, open a **separate inspector-only workflow** before
+generating; later attach schema to Execute for paid-POST protection.
+
+Tested: 73 Python unit tests, 18 installed Core 0.39.0 schema tests,
+and an isolated Frontend 1.55.14 UI run with no failures, including
+create/connect/save/load/disconnect of Inspector and Execute. A single
+read-only live metadata probe of the user's H3 workflow (ID
+`2109574959826993154`) returned 50 nodes and 212 fields, rejected
+`28.text` and accepted `28.prompt` (with the other selected fields).
+No paid task creation was attempted. Running 8188 has not reloaded
+the new Python code, so live user UI validation and paid end-to-end
+regression are still **pending**.
+
+To rerun the safe connectivity probe after configuring the local API
+key, use `tests/probe_rh_workflow_schema.py --workflow-id <ID> --base-url
+https://www.runninghub.ai` with ComfyUI's Python. The probe prints
+field names and status only. Keep its output free of raw prompt values.
+
 ## 6. 官方依据
 
 - [ComfyUI V3 迁移、MultiType 与动态输入](https://docs.comfy.org/custom-nodes/v3_migration)

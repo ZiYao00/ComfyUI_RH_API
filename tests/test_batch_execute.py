@@ -20,6 +20,8 @@ def load_batch_module(client_class, uncertain_error):
     sys.modules[f"{package_name}.rh_utils"] = rh_utils
 
     rh_client = types.ModuleType(f"{package_name}.rh_client")
+    if not hasattr(client_class, "resolve_instance_type"):
+        client_class.resolve_instance_type = staticmethod(lambda choice: choice)
     rh_client.RHClient = client_class
     rh_client.RHTaskSubmissionUncertainError = uncertain_error
     sys.modules[f"{package_name}.rh_client"] = rh_client
@@ -60,6 +62,32 @@ class BatchExecuteTests(unittest.TestCase):
         self.assertEqual(task_ids, "task-1,task-2")
         self.assertEqual(len(calls), 2)
         self.assertEqual(calls[0]["workflow_or_app_id"], "workflow-1")
+        self.assertEqual(calls[0]["instance_type"], "auto")
+
+    def test_batch_explicit_plus_is_forwarded_to_every_submission(self):
+        class Uncertain(RuntimeError):
+            pass
+
+        calls = []
+
+        class FakeClient:
+            def __init__(self, api_key, base_url):
+                pass
+
+            def create_task(self, **kwargs):
+                calls.append(kwargs)
+                return f"sample-{len(calls)}"
+
+        module = load_batch_module(FakeClient, Uncertain)
+        input_types = module.RH_BatchExecute.INPUT_TYPES()
+        self.assertEqual(input_types["optional"]["instance_type"][1]["default"], "auto")
+        self.assertEqual(input_types["optional"]["instance_type"][0], ["auto", "default", "plus", "ultra"])
+        result = module.RH_BatchExecute().batch_execute(
+            {"api_key": "[REDACTED]", "base_url": "https://www.runninghub.ai"},
+            "workflow-1", [[{"nodeId": "1"}], [{"nodeId": "2"}]], instance_type="plus"
+        )
+        self.assertEqual(result[0], "sample-1,sample-2")
+        self.assertEqual([call["instance_type"] for call in calls], ["plus", "plus"])
 
     def test_uncertain_submission_stops_remaining_batch(self):
         class Uncertain(RuntimeError):

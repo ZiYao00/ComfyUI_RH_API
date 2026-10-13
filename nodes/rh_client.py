@@ -74,6 +74,26 @@ class RHClient:
             return self.query_task_v2(task_id)
         return self.query_task_legacy(task_id)
 
+    @staticmethod
+    def resolve_instance_type(instance_type: Optional[str] = None, use_high_performance: bool = False) -> str:
+        """Map legacy BOOL and new dropdown to one validated RH instance label.
+
+        "auto" omits instanceType and preserves the old False behavior.
+        Explicit "default" is different: it sends instanceType=default.
+        """
+        if not isinstance(use_high_performance, bool):
+            raise ValueError("Legacy use_high_performance must be BOOLEAN.")
+        if instance_type is None:
+            return "plus" if use_high_performance else "auto"
+        if not isinstance(instance_type, str):
+            raise ValueError("instance_type must be one of: auto, default, plus, ultra.")
+        normalized = instance_type.strip().lower()
+        if normalized not in {"auto", "default", "plus", "ultra"}:
+            raise ValueError("instance_type must be one of: auto, default, plus, ultra.")
+        if use_high_performance and normalized != "plus":
+            raise ValueError("Conflicting legacy high performance flag and instance_type.")
+        return normalized
+
     def create_task(
         self,
         workflow_or_app_id: str,
@@ -81,8 +101,12 @@ class RHClient:
         is_ai_app: bool = False,
         use_high_performance: bool = False,
         timeout: int = 30,
+        instance_type: Optional[str] = None,
     ) -> str:
         """Create one RH task with a single safe POST attempt."""
+        selected_instance = self.resolve_instance_type(instance_type, use_high_performance)
+        if is_ai_app and instance_type is not None and selected_instance != "auto":
+            raise ValueError("Explicit instance_type is not yet supported for RH AI Apps.")
         params = params or []
         if is_ai_app:
             url = f"{self.base_url}/task/openapi/ai-app/run"
@@ -99,8 +123,8 @@ class RHClient:
                 "nodeInfoList": params,
             }
 
-        if use_high_performance:
-            payload["instanceType"] = "plus"
+        if selected_instance != "auto":
+            payload["instanceType"] = selected_instance
 
         try:
             response = self.session.post(

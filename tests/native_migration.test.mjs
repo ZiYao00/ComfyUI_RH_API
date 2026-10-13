@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { readLegacyRows, newInputName, isLegacyGroup, isLegacyExecute, migrateExecuteNode, migrateGraph } from '../js/rh_native_migration.js';
+import { readLegacyRows, newInputName, isLegacyGroup, isLegacyExecute, isLegacyInstance, migrateExecuteNode, migrateExecuteInstance, migrateGraph } from '../js/rh_native_migration.js';
 
 const legacy = (values, inputs = []) => ({ type: 'RH_Params2', widgets_values: values, inputs });
 
@@ -120,6 +120,77 @@ test('execute migration rejects indexes beyond the 16-source native limit', () =
     const node = { type: 'RH_Execute2', inputs: [{ name: 'params' }, { name: 'params_17' }] };
     assert.throws(() => migrateExecuteNode(node), /unsupported params index 17/);
 });
+test('old saved High Performance Boolean converts to native instance combo without shifting other widgets', () => {
+    for (const [oldValue, expected] of [[false, 'auto'], [true, 'plus']]) {
+        const node = {
+            type: 'RH_Execute',
+            widgets_values: [777, oldValue, true, 'ORIGINAL'],
+            widgets_values_named: { timeout: 777, use_high_performance: oldValue, save_to_local: true, output_prefix: 'ORIGINAL' },
+            inputs: [
+                { name: 'config', link: 2 }, { name: 'params.params', link: 3 },
+                { name: 'use_high_performance', type: 'BOOLEAN', widget: { name: 'use_high_performance' }, link: null },
+            ],
+        };
+        assert.equal(isLegacyInstance(node), true);
+        assert.equal(migrateExecuteInstance(node), true);
+        assert.deepEqual(node.widgets_values, [777, expected, true, 'ORIGINAL']);
+        assert.equal(node.widgets_values_named.instance_type, expected);
+        assert.equal('use_high_performance' in node.widgets_values_named, false);
+        assert.equal(node.inputs[2].name, 'instance_type');
+        assert.equal(node.inputs[2].type, 'COMBO');
+        assert.equal(node.inputs[2].widget.name, 'instance_type');
+        assert.equal(node.inputs[1].link, 3);
+        assert.equal(node.properties.rh_instance_type_version, 1);
+        assert.equal(migrateExecuteInstance(node), false);
+    }
+});
+
+test('new instance string values never undergo another Boolean migration', () => {
+    for (const kind of ['auto', 'default', 'plus', 'ultra']) {
+        const node = { type: 'RH_Execute', widgets_values: [600, kind, false, 'RH'],
+            inputs: [{ name: 'instance_type', widget: { name: 'instance_type' }, link: null }] };
+        assert.equal(isLegacyInstance(node), false);
+        assert.equal(migrateExecuteInstance(node), false);
+        assert.equal(node.widgets_values[1], kind);
+    }
+});
+
+test('old linked Boolean blocks migration without mutating the original graph', () => {
+    const node = { id: 81, type: 'RH_Execute', inputs: [
+        { name: 'config', link: null },
+        { name: 'use_high_performance', type: 'BOOLEAN', widget: { name: 'use_high_performance' }, link: 7 },
+    ], widgets_values: [600, true, false, 'RH'] };
+    const graph = { nodes: [node], links: [[7, 88, 0, 81, 1, 'BOOLEAN']] };
+    const before = structuredClone(graph);
+    assert.throws(() => migrateGraph(graph, () => null), /external Boolean link/);
+    assert.deepEqual(graph, before);
+});
+
+test('named-versus-positional instance conflict and ambiguous values are rejected', () => {
+    const createNode = (values, named) => ({
+        type: 'RH_Execute', widgets_values: values, widgets_values_named: named,
+        inputs: [{ name: 'use_high_performance', link: null }],
+    });
+    assert.throws(() => migrateExecuteInstance(createNode(
+        [600, false, true, 'RH'], { use_high_performance: true }
+    )), /conflicting positional/);
+    assert.throws(() => migrateExecuteInstance(createNode(
+        [600, true, true, 'RH'], { instance_type: 'ultra' }
+    )), /both old and new/);
+    assert.throws(() => migrateExecuteInstance(createNode(
+        [600, false, true], {}
+    )), /cannot safely decode/);
+});
+
+test('a legacy Boolean inside a subgraph is explicitly blocked', () => {
+    const inside = { type: 'RH_Execute', widgets_values: [600, false, false, 'RH'],
+        inputs: [{ name: 'use_high_performance', link: null }] };
+    const graph = { nodes: [], links: [], definitions: { subgraphs: [{ id: 'sub', nodes: [inside] }] } };
+    const before = structuredClone(graph);
+    assert.throws(() => migrateGraph(graph, () => null), /subgraph/);
+    assert.deepEqual(graph, before);
+});
+
 test('new workflows are not migrated twice', () => {
     assert.equal(isLegacyGroup({ type: 'RH_Params2', properties: { rh_native_ui_version: 2 } }), false);
     assert.equal(isLegacyGroup({ type: 'RH_Params2', properties: { rh_native_ui_version: 1 }, widgets_values: ['1'], inputs: [{ name: 'param_count.value_1' }] }), false);

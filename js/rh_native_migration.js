@@ -53,6 +53,67 @@ export function migrateExecuteNode(node) {
     return true;
 }
 
+// Execute instance migration is separate from Params/Image UI migrations.
+// Keep NATIVE_VERSION unchanged; this version only governs the instance selector.
+export const INSTANCE_VERSION = 1;
+
+export function isLegacyInstance(node) {
+    if (!["RH_Execute", "RH_Execute2"].includes(node.type)) return false;
+    const named = node.widgets_values_named || {};
+    return typeof node.widgets_values?.[1] === "boolean" ||
+        Object.prototype.hasOwnProperty.call(named, "use_high_performance") ||
+        (node.inputs || []).some(input => input.name === "use_high_performance");
+}
+
+export function migrateExecuteInstance(node) {
+    if (!isLegacyInstance(node)) return false;
+    if (node.properties?.rh_instance_type_version === INSTANCE_VERSION) {
+        throw new Error("RH instance migration stopped: already-migrated Execute contains a legacy Boolean value.");
+    }
+    const values = node.widgets_values;
+    if (!Array.isArray(values) || values.length !== 4 || typeof values[1] !== "boolean") {
+        throw new Error("RH instance migration stopped: cannot safely decode old High Performance widget values. Keep the original workflow.");
+    }
+    if (typeof values[0] !== "number" || typeof values[2] !== "boolean" ||
+        typeof values[3] !== "string") {
+        throw new Error("RH instance migration stopped: legacy Execute widget order is ambiguous. Keep the original workflow.");
+    }
+    const named = node.widgets_values_named || {};
+    if (Object.prototype.hasOwnProperty.call(named, "instance_type")) {
+        throw new Error("RH instance migration stopped: both old and new instance fields are present.");
+    }
+    if (Object.prototype.hasOwnProperty.call(named, "use_high_performance") &&
+        named.use_high_performance !== values[1]) {
+        throw new Error("RH instance migration stopped: conflicting positional and named Boolean values.");
+    }
+    const inputs = node.inputs || [];
+    if (inputs.some(input => input.name === "instance_type")) {
+        throw new Error("RH instance migration stopped: duplicate instance input mapping.");
+    }
+    for (const input of inputs) {
+        if (input.name !== "use_high_performance") continue;
+        if (input.link != null) {
+            throw new Error("RH instance migration stopped: an external Boolean link controls High Performance. Disconnect it in the old version or migrate manually; no links were changed.");
+        }
+    }
+    const selected = values[1] ? "plus" : "auto";
+    values[1] = selected;
+    if (Object.prototype.hasOwnProperty.call(named, "use_high_performance")) {
+        delete named.use_high_performance;
+        named.instance_type = selected;
+    }
+    for (const input of inputs) {
+        if (input.name !== "use_high_performance") continue;
+        input.name = "instance_type";
+        input.type = "COMBO";
+        if (input.widget) input.widget.name = "instance_type";
+        if (input.label === "High Performance") input.label = "Instance Type";
+        if (input.localized_name === "High Performance") input.localized_name = "Instance Type";
+    }
+    node.properties = { ...node.properties, rh_instance_type_version: INSTANCE_VERSION };
+    return true;
+}
+
 export function isLegacyGroup(node) {
     const group = GROUPS[node.type];
     if (!group) return false;
@@ -201,12 +262,15 @@ export function migrateGraph(graphData, createNode) {
     // ComfyUI 1.53 constructs subgraph definitions before this extension hook.
     // Do not partially migrate an already-instantiated legacy definition.
     for (const subgraph of staged.definitions?.subgraphs || []) {
-        if ((subgraph.nodes || []).some((node) => isLegacyGroup(node) || isLegacyExecute(node))) {
+        if ((subgraph.nodes || []).some((node) => isLegacyGroup(node) || isLegacyExecute(node) || isLegacyInstance(node))) {
             throw new Error("RH migration stopped: this workflow contains a legacy RH node inside a subgraph. Migrate an expanded copy first; the original workflow is unchanged.");
         }
     }
     for (const old of staged.nodes || []) {
         if (migrateExecuteNode(old)) migrated++;
+    }
+    for (const old of staged.nodes || []) {
+        if (migrateExecuteInstance(old)) migrated++;
     }
     for (const old of staged.nodes || []) {
         if (!isLegacyGroup(old)) continue;

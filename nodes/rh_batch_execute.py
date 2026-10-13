@@ -17,6 +17,12 @@ class RH_BatchExecute:
                 "config": ("RH_CONFIG", ),
                 "workflow_id": ("STRING", {"multiline": False, "default": ""}),
                 "param_bundle": ("RH_PARAM_BUNDLE", ),
+            },
+            "optional": {
+                "instance_type": (["auto", "default", "plus", "ultra"], {
+                    "default": "auto",
+                    "tooltip": "Auto omits instanceType; Default=24GB, Plus=48GB, Ultra=84GB.",
+                }),
             }
         }
 
@@ -25,12 +31,14 @@ class RH_BatchExecute:
     FUNCTION = "batch_execute"
     CATEGORY = "Ken-Chen/RH-API"
 
-    def batch_execute(self, config, workflow_id, param_bundle):
+    def batch_execute(self, config, workflow_id, param_bundle, instance_type="auto"):
         """
         Executes a task for each parameter set in the bundle.
         """
         _validate_config(config)
         client = RHClient(config["api_key"], config["base_url"])
+
+        selected_instance = RHClient.resolve_instance_type(instance_type)
 
         if not workflow_id:
             raise ValueError("Workflow ID is required.")
@@ -48,6 +56,7 @@ class RH_BatchExecute:
                     params=params_list,
                     is_ai_app=False,
                     use_high_performance=False,
+                    instance_type=selected_instance,
                 )
                 task_ids.append(task_id)
                 print(f"    ✓ Task submitted successfully. Task ID: {task_id}")

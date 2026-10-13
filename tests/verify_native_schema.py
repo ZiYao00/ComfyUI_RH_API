@@ -78,8 +78,11 @@ def main():
             self.assertEqual(names[-1], "params_15")
             self.assertEqual(len(names), 16)
             self.assertNotIn("extra_params", execute["optional"])
-            for name in ("timeout", "use_high_performance", "save_to_local", "output_prefix"):
+            for name in ("timeout", "instance_type", "save_to_local", "output_prefix"):
                 self.assertIn(name, execute["required"])
+            choices = repr(execute["required"]["instance_type"])
+            for choice in ("auto", "default", "plus", "ultra"):
+                self.assertIn(choice, choices)
 
         def test_execute_native_delegates_zero_based_autogrow_sources(self):
             base = [{"nodeId": "1", "fieldName": "text", "fieldValue": "base"}]
@@ -91,6 +94,7 @@ def main():
                 self.assertEqual(execute.call_args.kwargs["params"], base)
                 self.assertEqual(execute.call_args.kwargs["params_1"], extra)
                 self.assertFalse(execute.call_args.kwargs["save_to_local"])
+                self.assertEqual(execute.call_args.kwargs["instance_type"], "auto")
 
         def test_inspector_schema_and_optional_execute_wiring(self):
             import math
@@ -115,6 +119,20 @@ def main():
                 result = native.RH_ExecuteNative.execute({}, workflow_schema=fake_schema)
                 self.assertEqual(result.result[-1], "task")
                 self.assertIs(run.call_args.kwargs["workflow_schema"], fake_schema)
+
+        def test_native_instance_selection_and_legacy_bool_callers(self):
+            fake = (object(), object(), "", None, None, {"samples": object()}, "task")
+            for selected, high, expected in [
+                ("default", False, "default"),
+                ("plus", False, "plus"),
+                ("ultra", False, "ultra"),
+                ("auto", False, "auto"),
+                (None, True, "plus"),
+            ]:
+                with self.subTest(selected=selected, high=high):
+                    with patch.object(native.ExecuteService, "execute", return_value=fake) as run:
+                        native.RH_ExecuteNative.execute({}, instance_type=selected, use_high_performance=high)
+                        self.assertEqual(run.call_args.kwargs["instance_type"], expected)
 
         def test_audio_still_accepts_a_path_video_still_accepts_video(self):
             self.assertEqual(definitions["RH_UploadAudio"]["input"]["required"]["audio_path"][0], "STRING")

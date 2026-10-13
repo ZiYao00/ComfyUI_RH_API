@@ -271,6 +271,42 @@ other sample fields: node 7 `width/height`, node 27 `value`, node 111
 `image`. Use `python -B tests/run_tests.py` for the offline contract
 tests. Never log raw remote JSON during diagnostics.
 
+### Instance type selector and legacy Boolean migration (2026-10-13; stage B1)
+
+The active V3 `RH_Execute` now has a native `instance_type` combo with
+`auto`, `default`, `plus`, `ultra`. `auto` omits the `instanceType`
+field (same as old `use_high_performance=False`). Explicit `default`
+sends `instanceType=default` (24 GB); `plus` sends `plus` (48 GB);
+`ultra` sends `ultra` (84 GB). Instance allowance and cloud charges
+depend on the RH API account and must be checked before a real paid run.
+
+`RHClient.resolve_instance_type` is the canonical payload translation:
+an absent new selector preserves the legacy Boolean (`False → auto`,
+`True → plus`), and conflicting or invalid choices fail before POST.
+Existing direct Python calls keep their positional arguments. The V1
+`RH_BatchExecute` has an **optional** combo with default `auto`, so
+saved batch workflows preserve prior behavior. Explicit instance choices
+are not asserted to work for AI Apps.
+
+The graph-only migration lives in `js/rh_native_migration.js` and uses
+`rh_instance_type_version=1`, separate from Params/Image
+`rh_native_ui_version=2`. It rewrites the old second positional
+widget value and matching named values, preserves Timeout, Save and
+Output Prefix values and the existing input-slot order. A disconnected
+legacy `use_high_performance` widget socket is renamed to
+`instance_type` with the native COMBO datatype. A *connected* Boolean
+socket, contradictory named/positional data, duplicate old/new fields,
+subgraph definition or ambiguous old widget format blocks migration
+with `RH_MigrationRequired`, preserving the original file. Do not
+silently disconnect the old link. Existing API-format prompt JSON must
+be re-exported from a migrated graph.
+
+Tests: `node --test tests/native_migration.test.mjs`,
+`tests/verify_native_schema.py` against target Core, and
+`node tests/verify_native_ui.mjs` against installed Frontend.
+No paid Plus/Ultra/default API submission has been made; mock payload
+tests are not real permission or billing verification.
+
 ## 12. Deferred follow-up backlog
 
 The current maintenance cycle is intentionally closed without forcing tests that the present environment cannot run. The following items are deferred rather than treated as release blockers:

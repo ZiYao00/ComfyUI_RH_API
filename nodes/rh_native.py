@@ -177,8 +177,9 @@ def execute_schema(node_id: str, title: str, *, deprecated: bool = False):
                 optional=True,
                 tooltip="Connect RH_PARAMS sources in order; a new input appears only after the current trailing input is connected.",
             ),
-            io.Boolean.Input("use_high_performance", display_name="High Performance", default=False,
-                             tooltip="Use the high-performance RunningHub instance when supported."),
+            io.Combo.Input("instance_type", display_name="Instance Type",
+                           options=["auto", "default", "plus", "ultra"], default="auto",
+                             tooltip="Auto omits instanceType; Default=24GB, Plus=48GB, Ultra=84GB. Check API permissions and billing."),
             io.Boolean.Input("save_to_local", display_name="Save RH Originals", default=False,
                              tooltip="Also preserve RunningHub original files in the ComfyUI output directory."),
             io.String.Input("output_prefix", display_name="Output Prefix", default="RH", multiline=False,
@@ -207,7 +208,8 @@ class RH_ExecuteNative(io.ComfyNode):
 
     @classmethod
     def execute(cls, config, timeout=600, params=None,
-                use_high_performance=False, save_to_local=False, output_prefix="RH", workflow_schema=None):
+                instance_type=None, save_to_local=False, output_prefix="RH", workflow_schema=None,
+                use_high_performance=False):
         if params is None:
             sources = {}
         elif isinstance(params, dict):
@@ -221,6 +223,8 @@ class RH_ExecuteNative(io.ComfyNode):
             params=primary,
             timeout=timeout,
             use_high_performance=use_high_performance,
+            instance_type=(instance_type if instance_type is not None else
+                           ("plus" if use_high_performance else "auto")),
             save_to_local=save_to_local,
             output_prefix=output_prefix,
             workflow_schema=workflow_schema,

@@ -32,6 +32,23 @@ Add `RH Execute`, connect `RH Config.config`, and queue the prompt.
 
 `RH Execute` waits for the RH task, preserves/stages the returned files, converts supported files to ComfyUI values, and returns the `task_id`. Its RH_PARAMS fan-in is one native Autogrow chain: by default only `params` is visible; connecting it reveals `params_1`, then `params_2`, and so on through `params_15` (16 sources total). Later sources override duplicate node/field pairs, matching the former Execute 2 behavior. Saved graph workflows from the old Execute layouts are migrated automatically; old API-format prompts should be re-exported from the migrated graph.
 
+### 3B. Choose the RunningHub execution instance
+
+`RH Execute` now uses `Instance Type` with four choices:
+`auto`, `default`, `plus`, `ultra`. `auto` omits the RH
+`instanceType` field and preserves the previous unchecked
+High Performance behavior. `default` is explicit 24 GB,
+`plus` is 48 GB, `ultra` is 84 GB. The same setting is optional
+on `RH Batch Execute`.
+
+Saved old Execute graphs automatically convert High Performance
+`false → auto`, `true → plus`. If the old Boolean widget had an
+external link, migration stops and warns instead of losing the
+connection: keep the original workflow and migrate that link manually.
+API-format prompts must be exported again after graph migration.
+Your RH membership does not by itself prove which API instances your
+account can run or how usage is charged; verify before a paid task.
+
 ### 3A. Inspect cloud fields before generating (optional, recommended)
 
 Use the new **RH Workflow Inspect** node to check a RunningHub workflow's

@@ -66,7 +66,7 @@ class RH_Execute:
     OUTPUT_NODE = True
     
     def execute(self, config, params=None, timeout=600, use_high_performance=False,
-                save_to_local=True, output_prefix="RH", workflow_schema=None):
+                save_to_local=True, output_prefix="RH", workflow_schema=None, instance_type=None):
         """
         Execute RunningHub workflow or AI app
 
@@ -104,7 +104,10 @@ class RH_Execute:
             if report.warnings:
                 print(report.explain())
 
-        task_id = self._create_task(config, params or [], use_high_performance)
+        if instance_type is None:
+            task_id = self._create_task(config, params or [], use_high_performance)
+        else:
+            task_id = self._create_task(config, params or [], use_high_performance, instance_type=instance_type)
         print(f"✓ Task created: {task_id}")
         
         # Monitor task using shared utility function
@@ -144,14 +147,20 @@ class RH_Execute:
             if field not in config or not config[field]:
                 raise ValueError(f"Missing required config field: {field}")
 
-    def _create_task(self, config, params, use_high_performance):
+    def _create_task(self, config, params, use_high_performance, instance_type=None):
         """Create task through the shared RH client safety boundary."""
         print("Creating task (single safe attempt)...")
-        task_id = RHClient(config["api_key"], config["base_url"]).create_task(
+        client = RHClient(config["api_key"], config["base_url"])
+        # Validate selection even before entering the paid create_task path.
+        # Legacy BOOL calls retain the same positional behavior.
+        selected = client.resolve_instance_type(instance_type, use_high_performance)
+        options = {"instance_type": selected} if instance_type is not None else {}
+        task_id = client.create_task(
             workflow_or_app_id=config["workflow_or_app_id"],
             params=params,
             is_ai_app=config.get("is_ai_app", False),
             use_high_performance=use_high_performance,
+            **options,
         )
         print("ℹ Using HTTP polling for task monitoring (WebSocket disabled for stability)")
         return task_id

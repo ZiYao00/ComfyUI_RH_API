@@ -148,6 +148,20 @@ key, use `tests/probe_rh_workflow_schema.py --workflow-id <ID> --base-url
 https://www.runninghub.ai` with ComfyUI's Python. The probe prints
 field names and status only. Keep its output free of raw prompt values.
 
+### 2026-10-13 B1：实例下拉和安全迁移
+
+`RH Execute` 的原 High Performance 布尔控件已升级为原生
+`instance_type` 下拉：`auto`（不传实例字段，兼容旧 false）、
+`default`（24 GB）、`plus`（48 GB）、`ultra`（84 GB）。
+原 true 自动对应 plus；旧 Timeout/Save/Output Prefix 控件顺序和值不变。
+`RH Batch Execute` 追加可选的同款下拉，旧工作流仍默认 auto。
+
+保存的旧 Execute BOOL 在加载前通过独立版本的迁移器转换。
+存在旧 BOOLEAN 外部连线、重复或矛盾字段、无法识别的控件序列等
+情况必须阻断并显示迁移警告，不能自动断线。迁移检查覆盖
+V3 前端的创建/保存/重载、上版 Execute/Execute2 图和多参数连接。
+在真实账号上实际生成 plus/ultra 任务尚未授权测试。
+
 ## 6. 官方依据
 
 - [ComfyUI V3 迁移、MultiType 与动态输入](https://docs.comfy.org/custom-nodes/v3_migration)

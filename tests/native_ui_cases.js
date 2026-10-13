@@ -35,7 +35,15 @@ check(images.title === '📤 RH Upload Image V2', 'Grouped image node uses the R
 check(nodes[3].title === '📤 RH Upload Image', 'Legacy single-image node keeps the RH Upload Image display name');
 check(execute.inputs.filter(i => i.name.startsWith('params.')).map(i => i.name).join(',') === 'params.params', 'RH Execute starts with only params');
 check(execute.inputs.find(i => i.name === 'params.params')?.localized_name === 'params', 'First RH Execute input is displayed as params');
-check(['timeout', 'use_high_performance', 'save_to_local', 'output_prefix'].every(name => widget(execute, name)), 'RH Execute fixed controls use native widgets');
+check(['timeout', 'instance_type', 'save_to_local', 'output_prefix'].every(name => widget(execute, name)), 'RH Execute fixed controls use native widgets');
+const instanceControl = widget(execute, 'instance_type');
+const instanceOptions = typeof instanceControl?.options?.values === 'function'
+    ? instanceControl.options.values() : instanceControl?.options?.values;
+check(instanceControl?.value === 'auto', 'New Execute defaults to auto without an explicit instanceType');
+check(Array.isArray(instanceOptions) && ['auto', 'default', 'plus', 'ultra'].every(item => instanceOptions.includes(item)),
+    'Instance dropdown lists auto, default, plus and ultra');
+set(execute, 'instance_type', 'ultra');
+check(widget(execute, 'instance_type')?.value === 'ultra', 'Instance dropdown accepts Ultra without changing other widgets');
 const paramsSourceA = create('RH_Test_RH_PARAMS', [20, 20]);
 const paramsSourceB = create('RH_Test_RH_PARAMS', [20, 120]);
 check(!!paramsSourceA.connect(0, execute, execute.inputs.findIndex(i => i.name === 'params.params')), 'RH Execute params remains connectable');
@@ -155,8 +163,17 @@ for (const n of legacyExecuteGraph.nodes) for (const output of n.outputs || []) 
 }
 await app.loadGraphData(legacyExecuteGraph);
 execute = app.graph.getNodeById(executeId);
-check(widget(execute, 'timeout')?.value === 777 && widget(execute, 'use_high_performance')?.value === true && widget(execute, 'save_to_local')?.value === true && widget(execute, 'output_prefix')?.value === 'OLD', 'Legacy RH Execute widget values load into the new implementation without shifting');
+check(widget(execute, 'timeout')?.value === 777 && widget(execute, 'instance_type')?.value === 'plus' && widget(execute, 'save_to_local')?.value === true && widget(execute, 'output_prefix')?.value === 'OLD', 'Legacy RH Execute widget values load into the new implementation without shifting');
 check(execute.inputs.find(i => i.name === 'params.params')?.link != null, 'Legacy RH Execute params link migrates to the new Autogrow chain');
+
+const legacyFalseGraph = structuredClone(legacyExecuteGraph);
+const oldFalse = legacyFalseGraph.nodes.find(n => String(n.id) === String(executeId));
+oldFalse.widgets_values = [777, false, true, 'OLD'];
+await app.loadGraphData(legacyFalseGraph);
+execute = app.graph.getNodeById(executeId);
+check(widget(execute, 'instance_type')?.value === 'auto' && widget(execute, 'timeout')?.value === 777 &&
+    widget(execute, 'save_to_local')?.value === true && widget(execute, 'output_prefix')?.value === 'OLD',
+    'Legacy High Performance=false migrates to auto preserving all other widget values');
 
 // The immediately previous V2 graph used fixed params + extra_params.params_2...
 const previousV2Graph = structuredClone(saved);
@@ -178,6 +195,14 @@ check(execute.inputs.find(i => i.name === 'params.params_1')?.localized_name ===
 const execute2Graph = structuredClone(saved);
 const execute2 = execute2Graph.nodes.find(n => String(n.id) === String(executeId));
 execute2.type = 'RH_Execute2';
+execute2.widgets_values = [777, true, true, 'OLD'];
+delete execute2.widgets_values_named;
+const oldInstanceInput = (execute2.inputs || []).find(input => input.name === 'instance_type');
+if (oldInstanceInput) {
+    oldInstanceInput.name = 'use_high_performance';
+    oldInstanceInput.type = 'BOOLEAN';
+    if (oldInstanceInput.widget) oldInstanceInput.widget.name = 'use_high_performance';
+}
 for (const input of execute2.inputs || []) {
     if (input.name === 'params.params') input.name = 'params';
     else {
@@ -189,12 +214,14 @@ await app.loadGraphData(execute2Graph);
 execute = app.graph.getNodeById(executeId);
 check(execute.type === 'RH_Execute', 'Deprecated RH Execute 2 graph migrates to RH Execute');
 check(execute.inputs.find(i => i.name === 'params.params_1')?.link != null, 'Deprecated RH Execute 2 params_2 shifts to params_1');
+check(widget(execute, 'instance_type')?.value === 'plus', 'Deprecated Execute 2 Boolean true migrates to Plus');
 
 await app.loadGraphData(saved);
 execute = app.graph.getNodeById(executeId);
 params = app.graph.getNodeById(paramsId);
 images = app.graph.getNodeById(imagesId);
 check(widget(images, 'image_count')?.hidden === true && widget(images, 'image_count')?.value === '4', 'Image Count stays hidden and restores its automatic row state on reload');
+check(widget(execute, 'instance_type')?.value === 'ultra', 'Native Ultra instance value survives save/reload');
 check(images.inputs.find(i => i.name === 'image_count.image_3')?.link != null && widget(images, 'image_count.node_id_3')?.value === '83', 'Image 3 connection and its routing survive save/reload without reindexing');
 check(widget(images, 'image_count.field_name_3.custom_field_name_3')?.value === 'reference_image', 'Image 3 custom Field survives save/reload');
 check(widget(params, 'param_count.value_1')?.value === 'hello-world', 'Save/reload preserves values');
@@ -314,6 +341,38 @@ check(restoredImage.inputs.find(i => i.name === 'image_count.image_3')?.link != 
 const imageSaved = structuredClone(app.graph.serialize());
 await app.loadGraphData(imageSaved);
 check(app.graph.getNodeById(oldImage.id).inputs.find(i => i.name === 'image_count.image_3')?.link != null, 'Image 2 link survives another save/reload');
+
+// A saved Boolean link into the old High Performance control is not
+// convertible to a native string combo. The UI must block this graph.
+const linkedHighPerformance = structuredClone(imageSaved);
+const linkedExecute = linkedHighPerformance.nodes.find(n => n.type === 'RH_Execute');
+const linkedBoolean = linkedHighPerformance.nodes.find(n => n.type === 'RH_Test_BOOLEAN');
+const highPerfWidgetInput = linkedExecute?.inputs?.find(i => i.name === 'instance_type');
+check(!!linkedExecute && !!linkedBoolean && !!highPerfWidgetInput,
+    'Linked-Boolean migration fixture has the required saved nodes');
+if (linkedExecute && linkedBoolean && highPerfWidgetInput) {
+    linkedExecute.widgets_values = [600, true, false, 'RH'];
+    delete linkedExecute.widgets_values_named;
+    highPerfWidgetInput.name = 'use_high_performance';
+    highPerfWidgetInput.type = 'BOOLEAN';
+    if (highPerfWidgetInput.widget) highPerfWidgetInput.widget.name = 'use_high_performance';
+    const newLinkId = 9207;
+    highPerfWidgetInput.link = newLinkId;
+    linkedBoolean.outputs[0].links ??= [];
+    linkedBoolean.outputs[0].links.push(newLinkId);
+    const slotIndex = linkedExecute.inputs.indexOf(highPerfWidgetInput);
+    linkedHighPerformance.links.push([newLinkId, linkedBoolean.id, 0, linkedExecute.id, slotIndex, 'BOOLEAN']);
+    linkedHighPerformance.last_link_id = Math.max(newLinkId, linkedHighPerformance.last_link_id || 0);
+    const beforeBlocked = JSON.stringify(linkedHighPerformance);
+    let blockedMessage = '';
+    window.alert = message => { blockedMessage = message; };
+    await app.loadGraphData(linkedHighPerformance);
+    check(app.graph._nodes.some(n => n.type === 'RH_MigrationRequired'),
+        'Legacy High Performance Boolean link blocks graph migration');
+    check(blockedMessage.includes('external Boolean link') &&
+        JSON.stringify(linkedHighPerformance) === beforeBlocked,
+        'Blocked Boolean migration warns without altering the source workflow');
+}
 
 // Hook failures must not silently continue as runnable default-valued RH nodes.
 const malformed = structuredClone(imageSaved);

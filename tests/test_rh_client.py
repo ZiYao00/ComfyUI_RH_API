@@ -181,6 +181,47 @@ class RHClientTests(unittest.TestCase):
             self.module.RHClient("secret", "https://www.runninghub.cn", session=session).get_workflow_api_json("11")
         self.assertNotIn("secret data", str(context.exception))
 
+    def test_instance_types_are_explicit_and_auto_omits_field(self):
+        import json
+        for selection, expected in [
+            ("auto", None), ("default", "default"), ("plus", "plus"), ("ultra", "ultra")
+        ]:
+            with self.subTest(selection=selection):
+                session = RecordingSession({"code": 0, "data": {"taskId": "sample-task"}})
+                client = self.module.RHClient("example", "https://www.runninghub.ai", session=session)
+                result = client.create_task("sample-workflow", instance_type=selection)
+                self.assertEqual(result, "sample-task")
+                self.assertEqual(len(session.calls), 1)
+                payload = json.loads(session.calls[0][1]["data"])
+                self.assertEqual(payload.get("instanceType"), expected)
+
+    def test_invalid_instance_selection_and_conflicting_legacy_flag_prevent_posts(self):
+        session = RecordingSession({"code": 0, "data": {"taskId": "sample-task"}})
+        client = self.module.RHClient("example", "https://www.runninghub.ai", session=session)
+        for choice in ("unexpected", "", True, 42):
+            with self.subTest(choice=choice), self.assertRaises(ValueError):
+                client.create_task("sample-workflow", instance_type=choice)
+        with self.assertRaisesRegex(ValueError, "Conflicting"):
+            client.create_task("sample-workflow", use_high_performance=True, instance_type="ultra")
+        self.assertEqual(session.calls, [])
+
+    def test_legacy_instances_and_positional_timeout_remain_compatible(self):
+        import json
+        for enabled, expected in ((False, None), (True, "plus")):
+            session = RecordingSession({"code": 0, "data": {"taskId": "sample-task"}})
+            client = self.module.RHClient("example", "https://www.runninghub.ai", session=session)
+            client.create_task("sample-workflow", [], False, enabled, 21)
+            url, kwargs = session.calls[0]
+            self.assertEqual(kwargs["timeout"], 21)
+            self.assertEqual(json.loads(kwargs["data"]).get("instanceType"), expected)
+
+    def test_ai_app_explicit_instance_not_assumed_supported(self):
+        session = RecordingSession({"code": 0, "data": {"taskId": "sample-task"}})
+        client = self.module.RHClient("example", "https://www.runninghub.ai", session=session)
+        with self.assertRaisesRegex(ValueError, "AI Apps"):
+            client.create_task("12345", is_ai_app=True, instance_type="ultra")
+        self.assertEqual(session.calls, [])
+
     def test_cancel_task_is_centralized_in_client(self):
         session = RecordingSession({"code": 0, "msg": "success", "data": None})
         client = self.module.RHClient("key", "https://rh.example", session=session)

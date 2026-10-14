@@ -247,7 +247,7 @@ CanvasStore 提示 `getCanvas: canvas is null`。
 当前实际可创建的多参数节点是 `RH_Params2`。
 不要声称 `RH_MultiParams` 已在 UI 注册。
 
-旧独立研究仓库 `G:\GitHub\ComfyUI_RH_API-v3-lab`
+旧独立研究仓库 `[workspace]\ComfyUI_RH_API-v3-lab`
 已确认不被 8188/8190 加载，且正式项目已拥有 V3 原生机制。
 清理前完整归档 69 个文件（包括独立 .git 和 6 个未提交文件）：
 `G:\AIGC\ComfyUI_test\_backups\ComfyUI_RH_API-v3-lab_20261013.zip`，
@@ -283,3 +283,9 @@ WorkspaceKit 本身的官方 Save/Open/F5 与 Undo/Redo
 - [前端 v1.53.10 工作流、撤销重做与主题命令](https://github.com/Comfy-Org/ComfyUI_frontend/blob/v1.53.10/src/composables/useCoreCommands.ts)
 
 未来更新先核对目标版本官方实现，再运行上述测试。不能仅因版本编号变化重写控件，也不能只通过旧 Python 测试就宣布新 UI 已完成。
+
+## R0–R4 isolated security / Config frontend note (2026-10-13)
+
+An unpromoted worktree added a **V1 RH Config** `site` native COMBO (`international`, `domestic`, `custom`) after every legacy widget. The legacy `base_url` STRING and external links are retained. A versioned `beforeConfigureGraph` migration maps old graphs or blocks unsafe values/subgraphs with the existing `RH_MigrationRequired` protection. Do not treat browser Save/Open compatibility as proof that old API-format prompts can be freely rewritten: absence of `site` in an old API prompt must be handled server-side.
+
+This frontend change has been checked only in the detached `.ui-test/rh-config-hardening` worktree against Core 0.39.0 / Frontend 1.55.14 in the existing isolated-browser harness. Current regression: 128 Python, 24 JavaScript migration, 20 real-Core schema and **136 browser UI checks** passed, including a linked legacy Config URL after migration and repeated Save/Open, Config clipboard and Undo/Redo. The browser test is isolated, not a live 8190 plugin upgrade. Both 8188 and 8190 still serve their original shared RH plugin JS. Do not deploy to those servers before separate code isolation and an authorized restart/reload plan.

@@ -1,13 +1,13 @@
 # ComfyUI RH API — 新窗口接手交接（2026-10-13）
 
 > **此文件是接手入口，不代表待办已经实施。**
-> 仓库：`G:\GitHub\ComfyUI_RH_API`；分支 `main`；优先使用本机 CodexPro。
-> 后续开发总方案：`docs/AI_APP_STAGE2_PLAN.md`。
+> 仓库：`[workspace]\ComfyUI_RH_API`；分支 `main`；优先使用本机 CodexPro。
+> 未来阶段总路线图：`docs/FUTURE_DEVELOPMENT_ROADMAP.md`；AI App 阶段 2A–2D 详细计划：`docs/AI_APP_STAGE2_PLAN.md`。
 > 开工前重新核对本机 Git 状态、8190 实际服务与官方 API；不能把本记录的测试结论自动推广到以后版本。
 
 ## 0. 新 Agent 从哪里开始
 
-1. 使用 **ComfyUI Agent Rules**，再通过 CodexPro 打开 `G:\GitHub\ComfyUI_RH_API`，检查未提交改动、最新提交；不要覆盖其他 Agent 的改动。
+1. 使用 **ComfyUI Agent Rules**，再通过 CodexPro 打开 `[workspace]\ComfyUI_RH_API`，检查未提交改动、最新提交；不要覆盖其他 Agent 的改动。
 2. **先阅读**本文件、`docs/AI_APP_STAGE2_PLAN.md`、`docs/ARCHITECTURE.md`、`docs/NATIVE_UI.md`、`docs/QUICKSTART.md`。
 3. 核实 8190 是测试包（Core 0.39.0 / Frontend 1.55.14 的已测组合）、`custom_nodes/ComfyUI_RH_API` 指向本仓库，并确认现有节点真实注册；8188 是日常正式包，不能顺手改动。
 4. **从阶段 2A 开始**：先研究 RH 国际站 AI App 元数据接口、鉴权安全、返回形状，只读测试通过后再编写 2B。不要跳到付费创建 App 任务。
@@ -45,7 +45,7 @@
 
 ### 清理历史
 
-- `G:\GitHub\ComfyUI_RH_API-v3-lab` 旧独立实验仓库：含 6 个未提交文件的完整 69 文件归档已保存到
+- `[workspace]\ComfyUI_RH_API-v3-lab` 旧独立实验仓库：含 6 个未提交文件的完整 69 文件归档已保存到
   `G:\AIGC\ComfyUI_test\_backups\ComfyUI_RH_API-v3-lab_20261013.zip`；
   原目录已移入 Windows 系统回收站。**无需重新恢复旧 Lab 开发**，除非有具体证据需要。
 
@@ -118,7 +118,7 @@
 
 ## 5. 回归与安全操作
 
-在 `G:\GitHub\ComfyUI_RH_API` 根目录执行：
+在 `[workspace]\ComfyUI_RH_API` 根目录执行：
 
 ```bash
 python -B tests/run_tests.py
@@ -132,7 +132,7 @@ git diff --check
 
 - 每个真实后端/浏览器测试先检查 8190 进程是否已启动、队列是否为空；不要因为断言失败直接重启服务或清空队列。
 - `tests/probe_live_official_8190.mjs` 依赖本机 WorkspaceKit 已安装的 Playwright，并通过 **8190 测试包**专属流程暂存和清理测试工作流；不能拿去对 8188 运行。
-- 禁止打印任何密钥、含鉴权参数的 URL、完整 App 请求体；禁止提交 `config.local.json`、`.rh-task-history/`、用户工作流 JSON 或媒体文件。
+- 禁止打印任何密钥、含鉴权参数的 URL、完整 App 请求体；禁止提交私有 `config.json`（历史 `config.local.json` 同样不可提交）、`.rh-task-history/`、用户工作流 JSON 或媒体文件。
 - 由于旧 Lab 已回收、两个测试包共享 Python，严禁未经授权清理 Lab 归档、安装依赖、对用户正式 output 目录做批量操作。
 
 ## 6. 状态边界、故障恢复
@@ -145,4 +145,27 @@ git diff --check
 
 ## 7. 下一窗口建议的第一条任务
 
-> 使用 CodexPro 打开 `G:\GitHub\ComfyUI_RH_API`，先读 `docs/HANDOFF_NEXT_STAGES.md` 和 `docs/AI_APP_STAGE2_PLAN.md`，核对 Git 与 8190 测试环境状态。先执行 **阶段 2A：RH 国际站 AI App 的只读元数据接口和凭证风险检查**，给出官方响应结构及安全实现结论，再按 Gate 决定 2B 开发。不要修改 8188、安装共享依赖、重启服务、运行付费 AI App 或 push；除非另行得到授权。
+> 使用 CodexPro 打开 `[workspace]\ComfyUI_RH_API`，先读 `docs/HANDOFF_NEXT_STAGES.md` 和 `docs/AI_APP_STAGE2_PLAN.md`，核对 Git 与 8190 测试环境状态。先执行 **阶段 2A：RH 国际站 AI App 的只读元数据接口和凭证风险检查**，给出官方响应结构及安全实现结论，再按 Gate 决定 2B 开发。不要修改 8188、安装共享依赖、重启服务、运行付费 AI App 或 push；除非另行得到授权。
+
+## 8. R0–R4 isolated security / Config migration worktree (2026-10-13)
+
+This section describes **an isolated, unpromoted working tree**, not changes loaded by the user's main 8188/8190 instances.
+
+- Worktree root: `G:\\GitHub\\ComfyUI_RH_API\\.ui-test\\rh-config-hardening`, detached at the baseline `a66c372`; original checkout and running servers were not changed.
+- Main 8188 and test 8190 were both observed serving JS matching the original checkout. Output isolation does **not** isolate front-end plugin sources; do not promote these JS changes until 8190 has its own verified plugin checkout and 8188 code path is protected.
+- Isolated changes: `config.json` is untracked/ignored and received the existing international API key through local-only `scripts/migrate_config_once.py` without printing it. No secret values are written to tracked files.
+- Main checkout credential-only migration was also performed **without touching main Python/JS or restarting 8188**: `config.json` was untracked/ignored and now contains `api_keys.international` plus TEMPORARY legacy `api_key` / `base_url` keys within the same file. `scripts/verify_legacy_config_transition.py` proved the legacy reader's merged settings are identical with the old second file excluded; only then was the exact main `config.local.json` file individually deleted. `scripts/check_config_final_state.py` verified exactly one private file remains, the secret is present and the old reader resolves the same credentials; no secret values were printed. The `config.json.example` template was removed only from the detached isolated tree; the original checkout still has this tracked example until approved promotion.
+- `RH_Config` remains V1; appended native `site` COMBO and preserves legacy `base_url` STRING for old graph/API formats. Exact custom origins require local approval. Client credentialed calls are constrained to approved HTTPS origins, block redirects and redact sensitive errors; CDN media downloader has separate bounded URL validation.
+- Isolated code validation after recovery: 128 Python tests, 24 JS migration tests, 20 target Core schema tests and 136 Frontend 1.55.14 browser UI assertions passed (including old Config linked URL migration, repeated Save/Open, clipboard, Undo/Redo). Live 8190 loading of the changed plugin is still **PENDING** because 8188/8190 share their plugin code source.
+- Existing AI App 2A metadata / 2B Inspector remain **not implemented / not externally verified**.
+- For promotion, first isolate the 8190 plugin code, check for concurrent changes, and re-run full tests. The main checkout already has the ignored private `config.json`, so **never copy or overwrite it with another credential file**. Only move reviewed code. Remove transitional `api_key` / `base_url` aliases from that single file only after 8188 has been safely upgraded and verified.
+- No Git commit or push was performed in this maintenance worktree. Do not execute paid RH tasks or repeat 30-second H3 benchmarks as part of promotion.
+
+## 9. R0–R4 TEST CLOSEOUT — offline only (2026-10-14)
+
+- Final report: [`docs/R0_R4_TEST_CLOSEOUT_2026-10-14.md`](R0_R4_TEST_CLOSEOUT_2026-10-14.md). This latest checkpoint supersedes the older **128-Python** count in section 8.
+- Final post-fix totals: **129 Python + 24 JS migration + 20 target Core Schema + 136 isolated browser UI = 309 / 309 pass**.
+- Additional compatibility bug fixed in detached worktree: migration maps a linked legacy `base_url` STRING to `site=custom`; the backend now accepts the two built-in RH HTTPS hosts there while still denying unapproved non-RH custom origins. Regression was added and observed to fail before the fix, then pass after.
+- 8190 read-only check: online, Core `0.39.0`, Frontend `1.55.14`, current `RH_Config` has **no `site` Combo**, queue running/pending both zero. **New worktree code was not installed into 8190.**
+- User explicitly deferred isolating 8190 plugin code and strictly forbade touching 8188. No server restart, no paid RH call, no Git commit/push. This stage is **OFFLINE_TEST_PASS / LIVE_8190_PENDING**, not a production deployment.
+- The new report records benefits, exact tests, unresolved DNS/SSRF edge cases and the 2A/2B handoff. Do not advertise AI App metadata or new Config dropdown as currently live.

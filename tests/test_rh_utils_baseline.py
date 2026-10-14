@@ -98,14 +98,14 @@ class RHUtilsBaselineTests(unittest.TestCase):
     def test_check_task_status_maps_queued(self):
         response = FakeResponse({"code": 0, "msg": "APIKEY_TASK_IS_QUEUED", "data": None})
         with mock.patch.object(self.rh_utils.requests, "post", return_value=response):
-            result = self.rh_utils._check_task_status("task-1", "key", "https://example.invalid")
+            result = self.rh_utils._check_task_status("task-1", "key", "https://www.runninghub.ai")
         self.assertEqual(result, {"taskStatus": "QUEUED"})
 
     def test_check_task_status_returns_output_list(self):
         outputs = [{"fileUrl": "https://example.invalid/a.png", "fileType": "png"}]
         response = FakeResponse({"code": 0, "msg": "", "data": outputs})
         with mock.patch.object(self.rh_utils.requests, "post", return_value=response):
-            result = self.rh_utils._check_task_status("task-1", "key", "https://example.invalid")
+            result = self.rh_utils._check_task_status("task-1", "key", "https://www.runninghub.ai")
         self.assertEqual(result, outputs)
 
     def test_check_task_status_supports_v2_query_mode(self):
@@ -121,7 +121,7 @@ class RHUtilsBaselineTests(unittest.TestCase):
             result = self.rh_utils._check_task_status(
                 "task-1",
                 "key",
-                "https://example.invalid",
+                "https://www.runninghub.ai",
                 query_api="v2",
             )
         self.assertEqual(result, outputs)
@@ -132,7 +132,8 @@ class RHUtilsBaselineTests(unittest.TestCase):
         buffer = io.BytesIO(b"abc")
         buffer.seek(3)
 
-        def fake_post(url, data, files, timeout):
+        def fake_post(url, data, files, timeout, allow_redirects):
+            self.assertIs(allow_redirects, False)
             uploaded = files["file"][1]
             self.assertEqual(uploaded.tell(), 0)
             return FakeResponse({"code": 0, "data": {"fileName": "server-name.bin"}})
@@ -140,7 +141,7 @@ class RHUtilsBaselineTests(unittest.TestCase):
         with mock.patch.object(self.rh_utils.requests, "post", side_effect=fake_post):
             result = self.rh_utils.upload_file_to_rh(
                 api_key="key",
-                base_url="https://example.invalid",
+                base_url="https://www.runninghub.ai",
                 file_buffer=buffer,
                 file_name="sample.bin",
                 content_type="application/octet-stream",
@@ -149,7 +150,8 @@ class RHUtilsBaselineTests(unittest.TestCase):
         self.assertEqual(result, "server-name.bin")
 
     def test_upload_file_accepts_raw_bytes(self):
-        def fake_post(url, data, files, timeout):
+        def fake_post(url, data, files, timeout, allow_redirects):
+            self.assertIs(allow_redirects, False)
             uploaded = files["file"][1]
             self.assertTrue(hasattr(uploaded, "read"))
             self.assertEqual(uploaded.read(), b"abc")
@@ -159,7 +161,7 @@ class RHUtilsBaselineTests(unittest.TestCase):
              mock.patch.object(self.rh_utils.time, "sleep", return_value=None):
             result = self.rh_utils.upload_file_to_rh(
                 api_key="key",
-                base_url="https://example.invalid",
+                base_url="https://www.runninghub.ai",
                 file_buffer=b"abc",
                 file_name="sample.bin",
                 content_type="application/octet-stream",
@@ -170,7 +172,7 @@ class RHUtilsBaselineTests(unittest.TestCase):
     def test_check_task_status_reports_network_error_explicitly(self):
         error = self.rh_utils.requests.exceptions.RequestException("offline")
         with mock.patch.object(self.rh_utils.requests, "post", side_effect=error):
-            result = self.rh_utils._check_task_status("task-1", "key", "https://example.invalid")
+            result = self.rh_utils._check_task_status("task-1", "key", "https://www.runninghub.ai")
         self.assertEqual(result["taskStatus"], "NETWORK_ERROR")
         self.assertIn("offline", result["error"])
 
@@ -185,7 +187,7 @@ class RHUtilsBaselineTests(unittest.TestCase):
              mock.patch.object(self.rh_utils.time, "sleep", return_value=None):
             self.rh_utils._monitor_task(
                 "task-1",
-                {"api_key": "key", "base_url": "https://example.invalid"},
+                {"api_key": "key", "base_url": "https://www.runninghub.ai"},
                 timeout=60,
             )
         self.assertEqual(check_status.call_count, 1)
@@ -194,7 +196,7 @@ class RHUtilsBaselineTests(unittest.TestCase):
         content = b"\xef\xbb\xbf" + "中文文本".encode("utf-8")
         response = FakeResponse(content=content)
         with mock.patch.object(self.rh_utils.requests, "get", return_value=response):
-            result = self.rh_utils._download_text("https://example.invalid/result.txt")
+            result = self.rh_utils._download_text("https://cdn.example.org/result.txt")
         self.assertEqual(result, "中文文本")
 
     def test_download_latent_uses_load_file_and_cleans_temp_file(self):
@@ -203,7 +205,7 @@ class RHUtilsBaselineTests(unittest.TestCase):
         self.rh_utils.load_file = mock.Mock(return_value={"samples": "ok"})
 
         with mock.patch.object(self.rh_utils.requests, "get", return_value=response):
-            result = self.rh_utils._download_latent("https://example.invalid/result.safetensors")
+            result = self.rh_utils._download_latent("https://cdn.example.org/result.safetensors")
 
         self.assertEqual(result, {"samples": "ok"})
         temp_path = self.rh_utils.load_file.call_args.args[0]

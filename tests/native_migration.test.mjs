@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { readLegacyRows, newInputName, isLegacyGroup, isLegacyExecute, isLegacyInstance, migrateExecuteNode, migrateExecuteInstance, migrateGraph } from '../js/rh_native_migration.js';
+import { readLegacyRows, newInputName, isLegacyGroup, isLegacyExecute, isLegacyInstance, migrateExecuteNode, migrateExecuteInstance, migrateGraph, isLegacyConfig, migrateConfigNode } from '../js/rh_native_migration.js';
 
 const legacy = (values, inputs = []) => ({ type: 'RH_Params2', widgets_values: values, inputs });
 
@@ -219,4 +219,39 @@ test('new frontend does not rebuild controls or replace prototype.configure', as
         const source = await readFile(new URL('../js/' + filename, import.meta.url), 'utf8');
         assert.doesNotMatch(source, /addDOMWidget\s*\(|\.addInput\s*\(|prototype\.configure\s*=/);
     }
+});
+
+test('legacy RH Config retains URL string slot and app id without floating point conversion', () => {
+    const id = '2109843724737204225';
+    const graph = { nodes: [{ id: 1, type: 'RH_Config', widgets_values: ['', id, 'https://www.runninghub.ai', true],
+        inputs: [{ name: 'base_url', type: 'STRING', link: null }] }], links: [] };
+    assert.equal(migrateGraph(graph, () => null), 1);
+    const node = graph.nodes[0];
+    assert.equal(node.widgets_values[1], id);
+    assert.deepEqual(node.widgets_values.slice(2), ['https://www.runninghub.ai', true, 'legacy', 'international']);
+    assert.equal(node.inputs[0].type, 'STRING');
+    assert.equal(node.properties.rh_config_site_version, 1);
+    assert.equal(migrateGraph(graph, () => null), 0);
+});
+test('linked custom RH Config URL retains target slot, link and value', () => {
+    const graph = { nodes: [{ id: 8, type: 'RH_Config', widgets_values: ['', '12345', 'https://www.runninghub.cn', false],
+        inputs: [{ name: 'base_url', type: 'STRING', link: 7 }] }], links: [[7, 9, 0, 8, 0, 'STRING']] };
+    assert.equal(migrateGraph(graph, () => null), 1);
+    assert.equal(graph.nodes[0].widgets_values[5], 'custom');
+    assert.equal(graph.nodes[0].inputs[0].link, 7);
+    assert.equal(graph.links[0][4], 0);
+    assert.equal(graph.nodes[0].inputs.at(-1).name, 'site');
+});
+test('RH Config positional/named conflict blocks transactionally', () => {
+    const graph = { nodes: [{ id: 2, type: 'RH_Config',
+        widgets_values: ['', '123', 'https://www.runninghub.cn', false],
+        widgets_values_named: { base_url: 'https://www.runninghub.ai' }, inputs: [] }] };
+    const snapshot = structuredClone(graph);
+    assert.throws(() => migrateGraph(graph, () => null), /named and positional/);
+    assert.deepEqual(graph, snapshot);
+});
+test('legacy RH Config inside subgraph is fail-closed', () => {
+    const graph = { nodes: [], definitions: { subgraphs: [{ id: 'sub',
+        nodes: [{ id: 1, type: 'RH_Config', widgets_values: ['', '9', 'https://www.runninghub.cn', false] }] }] } };
+    assert.throws(() => migrateGraph(graph, () => null), /subgraph/);
 });

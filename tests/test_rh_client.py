@@ -28,8 +28,13 @@ def make_requests_stub():
 
 def load_rh_client():
     sys.modules["requests"] = make_requests_stub()
+    package_name = "rh_client_under_test_pkg"
+    package = types.ModuleType(package_name)
+    package.__path__ = [str(ROOT / "nodes")]
+    sys.modules[package_name] = package
+    sys.modules.pop(package_name + ".rh_security", None)
     path = ROOT / "nodes" / "rh_client.py"
-    spec = importlib.util.spec_from_file_location("rh_client_under_test", path)
+    spec = importlib.util.spec_from_file_location(package_name + ".rh_client", path)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     sys.modules[spec.name] = module
@@ -70,7 +75,7 @@ class RHClientTests(unittest.TestCase):
             "msg": "success",
             "data": [{"fileUrl": "https://example.invalid/a.png", "fileType": "png"}],
         })
-        client = self.module.RHClient("key", "https://rh.example", session=session)
+        client = self.module.RHClient("key", "https://www.runninghub.ai", session=session)
         result = client.query_task("task-1", mode="legacy")
 
         self.assertEqual(result.status, "SUCCESS")
@@ -86,7 +91,7 @@ class RHClientTests(unittest.TestCase):
             "errorMessage": "",
             "results": [{"url": "https://example.invalid/a.jpg", "outputType": "jpg"}],
         })
-        client = self.module.RHClient("secret-key", "https://rh.example", session=session)
+        client = self.module.RHClient("secret-key", "https://www.runninghub.ai", session=session)
         result = client.query_task("task-1", mode="v2")
 
         self.assertEqual(result.status, "SUCCESS")
@@ -98,7 +103,7 @@ class RHClientTests(unittest.TestCase):
 
     def test_v2_running_and_failure_are_normalized(self):
         running_session = RecordingSession({"taskId": "task-1", "status": "RUNNING", "results": None})
-        running = self.module.RHClient("key", "https://rh.example", session=running_session).query_task(
+        running = self.module.RHClient("key", "https://www.runninghub.ai", session=running_session).query_task(
             "task-1", mode="v2"
         )
         self.assertEqual(running.status, "RUNNING")
@@ -110,7 +115,7 @@ class RHClientTests(unittest.TestCase):
             "errorMessage": "bad task",
             "results": None,
         })
-        failed = self.module.RHClient("key", "https://rh.example", session=failed_session).query_task(
+        failed = self.module.RHClient("key", "https://www.runninghub.ai", session=failed_session).query_task(
             "task-1", mode="v2"
         )
         self.assertEqual(failed.status, "ERROR")
@@ -127,7 +132,7 @@ class RHClientTests(unittest.TestCase):
                 "size": "3",
             },
         })
-        client = self.module.RHClient("key", "https://rh.example", session=session)
+        client = self.module.RHClient("key", "https://www.runninghub.ai", session=session)
         filename = client.upload_file_v2(io.BytesIO(b"abc"), "a.mp3", "audio/mpeg")
 
         self.assertEqual(filename, "openapi/a.mp3")
@@ -138,7 +143,7 @@ class RHClientTests(unittest.TestCase):
 
     def test_create_task_preserves_legacy_json_body(self):
         session = RecordingSession({"code": 0, "data": {"taskId": "task-123"}})
-        client = self.module.RHClient("key", "https://rh.example", session=session)
+        client = self.module.RHClient("key", "https://www.runninghub.ai", session=session)
 
         task_id = client.create_task(
             workflow_or_app_id="workflow-1",
@@ -243,7 +248,7 @@ class RHClientTests(unittest.TestCase):
 
     def test_cancel_task_is_centralized_in_client(self):
         session = RecordingSession({"code": 0, "msg": "success", "data": None})
-        client = self.module.RHClient("key", "https://rh.example", session=session)
+        client = self.module.RHClient("key", "https://www.runninghub.ai", session=session)
 
         self.assertTrue(client.cancel_task("task-1"))
         url, kwargs = session.calls[0]
@@ -252,7 +257,7 @@ class RHClientTests(unittest.TestCase):
 
     def test_default_query_mode_remains_legacy(self):
         session = RecordingSession({"code": 0, "msg": "success", "data": []})
-        client = self.module.RHClient("key", "https://rh.example", session=session)
+        client = self.module.RHClient("key", "https://www.runninghub.ai", session=session)
         result = client.query_task("task-1")
         self.assertEqual(result.api_mode, "legacy")
         self.assertEqual(result.status, "NO_OUTPUT")

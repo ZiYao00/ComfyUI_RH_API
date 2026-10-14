@@ -162,13 +162,13 @@ Image/video-frame placeholders may remain only where required by legacy ComfyUI 
 
 ## 9. Secrets
 
-`config.local.json` is the preferred local secret store and is ignored by Git.
+The only active private runtime file is Git-ignored, untracked `config.json`, containing region-scoped `api_keys` and exactly authorized `trusted_custom_endpoints`. The former `config.local.json` is used only by the one-time migration utility, never by the new runtime. Keys must not be serialized into shared workflows.
 
-Node-entered values override file values for compatibility, but API keys should normally be left blank in workflow nodes so workflow JSON does not contain secrets.
+`RH_Config` remains V1: existing `api_key`, `workflow_or_app_id`, `base_url` STRING, `is_ai_app`, `query_api` and `RH_CONFIG` output retain their contracts. The `site` COMBO is appended last. New workflows use selected site as the authoritative origin, while old API prompts without the selector still use their legacy URL. Graph migration uses `rh_config_site_version` and preserves external links or blocks unsafe cases.
 
-UI masking is a display protection only; it does not replace secret-at-rest handling.
+`RHClient` validates credential destinations and rejects redirects before following them. Creating a paid task still has one safe POST attempt, with uncertain outcomes requiring manual inspection. Media downloads are treated separately: signed CDN URLs carry no RH API key, must be public HTTPS, are checked across redirects, and are preserved atomically with size limits. DNS rebinding protection has not been implemented.
 
-Never print API key contents in logs.
+Masking a key widget is only display protection, never secret-at-rest protection. Never log API keys, raw private responses or signed CDN URLs.
 
 ## 10. Dependency policy
 
@@ -446,7 +446,7 @@ During local stabilization of the upstream plugin:
 - commits are local rollback points;
 - do not push to the current upstream remote;
 - do not rename the plugin or node IDs during bug-fix/refactor work;
-- do not commit `__pycache__`, `.pyc`, or `config.local.json`;
+- do not commit `__pycache__`, `.pyc`, `config.json`, or the legacy `config.local.json`;
 - keep unrelated local files out of maintenance commits.
 
 A separately named repository can be created later after real-world regression is complete and the connector has a stable maintenance baseline.

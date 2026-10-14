@@ -10,8 +10,12 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 def load_rh_outputs():
+    package_name = "rh_outputs_under_test_pkg"
+    package = types.ModuleType(package_name)
+    package.__path__ = [str(ROOT / "nodes")]
+    sys.modules[package_name] = package
     path = ROOT / "nodes" / "rh_outputs.py"
-    spec = importlib.util.spec_from_file_location("rh_outputs_under_test", path)
+    spec = importlib.util.spec_from_file_location(package_name + ".rh_outputs", path)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     sys.modules[spec.name] = module
@@ -64,7 +68,7 @@ class RHOutputTests(unittest.TestCase):
         )
 
     def test_download_is_atomic_and_updates_type_from_content_type(self):
-        item = self.module.RHOutputItem(index=0, url="https://example.invalid/download")
+        item = self.module.RHOutputItem(index=0, url="https://cdn.example.org/download")
         response = FakeDownloadResponse([b"abc", b"def"], content_type="audio/mpeg")
         session = types.SimpleNamespace(get=lambda *args, **kwargs: response)
 

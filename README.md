@@ -12,7 +12,7 @@ ComfyUI custom nodes for calling RunningHub workflows and AI apps from a local C
 - Return ComfyUI `IMAGE`, `AUDIO`, `VIDEO`, `STRING`, and `LATENT` outputs where supported.
 - Surface download/conversion failures instead of replacing them with fake successful media.
 - Keep legacy RH result queries as the default while exposing an explicit V2 query mode for validation.
-- Store local credentials in ignored `config.local.json` instead of workflow JSON whenever possible.
+- Store local credentials in ignored `config.json` instead of workflow JSON whenever possible.
 
 See [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) for compatibility and maintenance rules.
 
@@ -35,7 +35,7 @@ The plugin deliberately does not pin or upgrade the Torch/CUDA stack supplied by
 ## Quick start
 
 1. Add `RH Config` and provide a RunningHub workflow/app ID.
-2. Prefer leaving the credential field blank and supplying it through `config.local.json`.
+2. Prefer leaving the credential field blank and supplying it through `config.json`.
 3. Add `RH Execute` and connect the `config` output.
 4. Add `RH Param` and/or upload nodes when remote workflow inputs need to be overridden.
 5. Queue the ComfyUI workflow.
@@ -54,16 +54,24 @@ New video workflows should prefer the `video` output. `video_frames` can require
 
 ## Configuration
 
-Create an ignored `config.local.json` beside the plugin files:
+Only `config.json` is used at runtime. It must be untracked by Git and ignored:
 
 ```json
 {
-  "api_key": "[REDACTED_SECRET]",
-  "base_url": "https://www.runninghub.cn"
+  "api_keys": {
+    "international": "YOUR_INTERNATIONAL_API_KEY",
+    "domestic": ""
+  },
+  "trusted_custom_endpoints": {}
 }
 ```
 
-`config.local.json` overrides non-empty values from the tracked legacy `config.json`. Values entered directly in `RH Config` have the highest priority.
+- `🌐 RH Config` has a native **Base URL** dropdown: `international` (new-node default, www.runninghub.ai), `domestic` (www.runninghub.cn), and `custom`.
+- For Custom, enter a clean HTTPS origin in the original `base_url` STRING control and separately authorize that origin and its API key under `trusted_custom_endpoints`. Importing a workflow does not grant a new credential destination.
+- The legacy `base_url` STRING input/links remain supported. Old API prompts with no `site` keep their URL. Old UI graphs are migrated or blocked explicitly when the mapping is unsafe.
+- Keys are bound to sites. A missing domestic key does **not** fall back to an international key. Prefer keeping widget Key values blank so workflow JSON never contains secrets.
+- `config.local.json` is **not read by the new runtime**. One-time migration only: `python -B scripts/migrate_config_once.py --source PATH_TO_OLD_CONFIG_LOCAL_JSON`. The source file is never deleted automatically.
+- The old example file has been replaced by this documented template; never commit the real config.
 
 ### Query API mode
 

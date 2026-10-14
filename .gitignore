@@ -1,4 +1,7 @@
-# Local secrets. Never commit this file.
+# Local secrets. Never commit live credential files.
+config.json
+config.json.pending
+# Legacy filename: ignored during migration, never used by the new runtime.
 config.local.json
 
 # Python runtime caches.

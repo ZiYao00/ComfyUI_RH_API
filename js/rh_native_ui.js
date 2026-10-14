@@ -1,5 +1,5 @@
 import { app } from "/scripts/app.js";
-import { GROUPS, NATIVE_VERSION, isLegacyExecute, isLegacyInstance, migrateGraph } from "./rh_native_migration.js";
+import { GROUPS, NATIVE_VERSION, isLegacyExecute, isLegacyInstance, isLegacyConfig, migrateGraph } from "./rh_native_migration.js";
 import { configureNativeGroup, labelNativeControls } from "./rh_native_groups.js";
 
 const NODES = new Set(["RH_Execute", "RH_Params2", "RH_UploadImage2", "RH_UploadImage", "RH_UploadVideo", "RH_UploadAudio",
@@ -43,7 +43,7 @@ app.registerExtension({
             // placeholder so a malformed migration cannot queue a cloud task.
             const subgraphIds = new Set((graphData.definitions?.subgraphs || []).map(item => String(item.id)));
             for (const node of graphData.nodes || []) {
-                if (!GROUPS[node.type] && !isLegacyExecute(node) && !isLegacyInstance(node) && !subgraphIds.has(String(node.type))) continue;
+                if (!GROUPS[node.type] && !isLegacyExecute(node) && !isLegacyInstance(node) && !isLegacyConfig(node) && node.type !== "RH_Config" && !subgraphIds.has(String(node.type))) continue;
                 node.properties = { ...node.properties, rh_migration_original_type: node.type, rh_migration_error: String(error.message || error) };
                 node.type = 'RH_MigrationRequired';
             }

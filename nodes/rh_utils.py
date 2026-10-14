@@ -13,6 +13,8 @@ import os
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from .rh_client import RHClient
+from .rh_outputs import safe_media_get
+from .rh_security import OFFICIAL_ORIGINS
 from .rh_video_frame_policy import validate_video_frame_mode
 
 # Dependency checks
@@ -59,34 +61,28 @@ def upload_file_to_rh(
     if api_mode not in {"legacy", "v2"}:
         raise ValueError("api_mode must be 'legacy' or 'v2'.")
 
-    max_retries = 5
-    for attempt in range(max_retries):
-        try:
-            print(f"Upload attempt {attempt + 1}/{max_retries} via {api_mode} API...")
-            if api_mode == "v2":
-                filename = client.upload_file_v2(
-                    file_buffer=file_buffer,
-                    file_name=file_name,
-                    content_type=content_type,
-                )
-            else:
-                filename = client.upload_file_legacy(
-                    file_buffer=file_buffer,
-                    file_name=file_name,
-                    content_type=content_type,
-                    file_type=file_type,
-                )
-            print(f"✓ File uploaded successfully: {filename}")
-            return filename
-        except Exception as e:
-            print(f"Upload attempt {attempt + 1} failed: {e}")
-            if attempt == max_retries - 1:
-                raise Exception(f"Failed to upload file after {max_retries} attempts: {e}") from e
-            wait_time = 2 ** attempt
-            print(f"Retrying in {wait_time} seconds...")
-            time.sleep(wait_time)
-
-    raise Exception("Failed to upload file and exhausted all retries.")
+    # Media uploads may already have completed when the response is lost.
+    # Retrying without RH upload idempotency would create duplicate uploads.
+    try:
+        if api_mode == "v2":
+            filename = client.upload_file_v2(
+                file_buffer=file_buffer, file_name=file_name,
+                content_type=content_type,
+            )
+        else:
+            filename = client.upload_file_legacy(
+                file_buffer=file_buffer, file_name=file_name,
+                content_type=content_type, file_type=file_type,
+            )
+        if not filename:
+            raise RuntimeError("RH upload returned no confirmed file identity.")
+        print("RH upload acknowledged by the server.")
+        return filename
+    except Exception as exc:
+        raise RuntimeError(
+            f"RH upload outcome is not confirmed ({type(exc).__name__}). "
+            "Do not retry automatically; review the RH upload list first."
+        ) from None
 
 
 # --- Task Monitoring and Output Processing Logic ---
@@ -133,7 +129,8 @@ def _monitor_task(task_id, config, timeout):
     max_network_errors = 3
 
     print("Monitoring task...")
-    print(f"Task URL: https://www.runninghub.cn/task/detail/{task_id}")
+    if base_url in OFFICIAL_ORIGINS.values():
+        print(f"Task URL: {base_url}/task/detail/{task_id}")
 
     while True:
         elapsed = time.time() - start_time
@@ -250,7 +247,7 @@ def _download_and_process_file(output):
             data = _download_latent(file_url)
             return {"type": "latent", "data": data} if data is not None else None
     except Exception as e:
-        print(f"Warning: Failed to download or process {file_type} file from {file_url}: {e}")
+        print(f"Warning: Failed to download/process RH {file_type} output ({type(e).__name__}); URL withheld.")
     return None
 
 def _process_outputs(outputs, save_to_local, output_prefix, task_id=None, video_frame_mode="all_frames"):
@@ -305,11 +302,11 @@ def _process_outputs(outputs, save_to_local, output_prefix, task_id=None, video_
                 )
             except Exception as e:
                 download_errors.append((item, e))
-                print(f"❌ Failed to preserve RH output #{item.index + 1} from {item.url}: {e}")
+                print(f"Failed to preserve RH output #{item.index + 1} ({type(e).__name__}); signed URL withheld.")
 
     if download_errors:
         details = "; ".join(
-            f"#{item.index + 1} {item.url}: {error}" for item, error in download_errors
+            f"#{item.index + 1}: {type(error).__name__}" for item, error in download_errors
         )
         raise RuntimeError(f"Failed to download {len(download_errors)} RunningHub output file(s): {details}")
 
@@ -400,19 +397,19 @@ def _process_outputs(outputs, save_to_local, output_prefix, task_id=None, video_
 
 def _download_image(url):
     try:
-        response = requests.get(url, timeout=30)
+        response = safe_media_get(url, session=requests, timeout=30, stream=False)
         response.raise_for_status()
         img = Image.open(BytesIO(response.content)).convert("RGB")
         return torch.from_numpy(np.array(img).astype(np.float32) / 255.0).unsqueeze(0)
     except Exception as e:
-        print(f"Error downloading image: {e}")
+        print(f"Error downloading image ({type(e).__name__}); signed URL withheld.")
         return None
 
 def _extract_video_frames(url):
     if not CV2_AVAILABLE: return []
     try:
         import tempfile
-        response = requests.get(url, timeout=60)
+        response = safe_media_get(url, session=requests, timeout=60, stream=False)
         response.raise_for_status()
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
             tmp.write(response.content)
@@ -428,12 +425,12 @@ def _extract_video_frames(url):
         os.unlink(tmp_path)
         return frames
     except Exception as e:
-        print(f"Error extracting video frames: {e}")
+        print(f"Error extracting video frames ({type(e).__name__}); signed URL withheld.")
         return []
 
 def _download_text(url):
     try:
-        response = requests.get(url, timeout=30)
+        response = safe_media_get(url, session=requests, timeout=30, stream=False)
         response.raise_for_status()
         # RunningHub text outputs are UTF-8 files. Decode the raw bytes explicitly
         # instead of relying on requests' charset guessing, which can turn Chinese
@@ -444,14 +441,14 @@ def _download_text(url):
         response.encoding = response.apparent_encoding or "utf-8"
         return response.text
     except Exception as e:
-        print(f"Error downloading text: {e}")
+        print(f"Error downloading text ({type(e).__name__}); signed URL withheld.")
         return ""
 
 def _download_audio(url):
     if not AUDIO_AVAILABLE: return None
     try:
         import tempfile
-        response = requests.get(url, timeout=60)
+        response = safe_media_get(url, session=requests, timeout=60, stream=False)
         response.raise_for_status()
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
             tmp.write(response.content)
@@ -462,7 +459,7 @@ def _download_audio(url):
         os.unlink(tmp_path)
         return {"waveform": waveform.unsqueeze(0), "sample_rate": sample_rate}
     except Exception as e:
-        print(f"Error downloading audio: {e}")
+        print(f"Error downloading audio ({type(e).__name__}); signed URL withheld.")
         return None
 
 def _download_latent(url):
@@ -473,7 +470,7 @@ def _download_latent(url):
     try:
         import tempfile
 
-        response = requests.get(url, timeout=60)
+        response = safe_media_get(url, session=requests, timeout=60, stream=False)
         response.raise_for_status()
         with tempfile.NamedTemporaryFile(delete=False, suffix=".safetensors") as tmp:
             tmp.write(response.content)
@@ -481,7 +478,7 @@ def _download_latent(url):
 
         return load_file(tmp_path)
     except Exception as e:
-        print(f"Error downloading latent: {e}")
+        print(f"Error downloading latent ({type(e).__name__}); signed URL withheld.")
         return None
     finally:
         if tmp_path and os.path.exists(tmp_path):
@@ -519,13 +516,13 @@ def _create_placeholder_latent():
     return {"samples": torch.zeros(1, 4, 64, 64)}
 def _download_and_save_video(url, filepath):
     try:
-        response = requests.get(url, timeout=120, stream=True)
+        response = safe_media_get(url, session=requests, timeout=120, stream=True)
         response.raise_for_status()
         with open(filepath, 'wb') as f:
             for chunk in response.iter_content(chunk_size=8192):
                 if chunk: f.write(chunk)
     except Exception as e:
-        print(f"Error saving video to {filepath}: {e}")
+        print(f"Error saving video ({type(e).__name__}); signed URL withheld.")
 
 def _save_audio_to_file(audio_data, filepath):
     if not AUDIO_AVAILABLE or not audio_data: return

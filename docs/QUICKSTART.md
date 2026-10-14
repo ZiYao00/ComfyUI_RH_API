@@ -18,11 +18,12 @@ Required workflow setting:
 
 Recommended credential setup:
 
-1. Copy `config.json.example` to `config.local.json`.
-2. Put the local credential in `config.local.json`.
-3. Leave the credential widget in `RH Config` blank.
+1. Verify `config.json` is both Git-ignored and no longer tracked by Git.
+2. Create one local `config.json` with `{"api_keys":{"international":"YOUR_KEY","domestic":""},"trusted_custom_endpoints":{}}`.
+3. Leave the API Key field blank. Use RH Config's Base URL dropdown (International / Domestic / Custom).
+4. For Custom, enter the exact HTTPS origin in the legacy/custom URL field and pre-authorize it with a dedicated Key in `trusted_custom_endpoints`.
 
-`config.local.json` is ignored by Git.
+The new runtime reads only `config.json`. The original 8188 checkout has already migrated to one ignored `config.json` containing temporary legacy `api_key`/`base_url` aliases; a byte-safe equivalence check of the old reader passed before the former `config.local.json` file was individually retired. Do not remove those in-file aliases until 8188 has been upgraded and verified. Old API prompts without `site` keep the original base_url.
 
 The optional `query_api` selector on `RH Config` defaults to `legacy`. Keep that default for normal use. `v2` is available for explicit migration/A-B validation.
 

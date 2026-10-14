@@ -12,9 +12,9 @@
 - 在支持的环境中输出 `IMAGE`、`AUDIO`、`VIDEO`、`STRING`、`LATENT`。
 - 下载或转换失败时明确报错，不再用“看似成功”的占位媒体掩盖错误。
 - 默认继续使用 RH Legacy 结果查询，同时提供显式 V2 查询模式用于迁移验证。
-- 优先把本地凭据放在 Git 忽略的 `config.local.json`，避免写入工作流 JSON。
+- 优先把本地凭据放在 Git 忽略的 `config.json`，避免写入工作流 JSON。
 
-长期兼容规则见 [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)。
+长期兼容规则见 [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)。未来功能计划、优先级和恢复入口见 [未来开发路线图](./docs/FUTURE_DEVELOPMENT_ROADMAP.md)；本轮离线验收记录见 [Config 与安全加固收尾报告](./docs/R0_R4_TEST_CLOSEOUT_2026-10-14.md)。
 
 ## 安装
 
@@ -35,7 +35,7 @@ pip install -r requirements.txt
 ## 快速使用
 
 1. 添加 `RH Config`，填写 RunningHub 工作流/应用 ID。
-2. 建议把节点里的凭据字段留空，通过 `config.local.json` 提供。
+2. 建议把节点里的凭据字段留空，通过 `config.json` 提供。
 3. 添加 `RH Execute` 并连接 `config`。
 4. 如需覆盖云端工作流输入，添加 `RH Param` 或对应上传节点。
 5. Queue Prompt 执行。
@@ -54,24 +54,24 @@ pip install -r requirements.txt
 
 ## 配置
 
-在插件目录创建不会被 Git 跟踪的 `config.local.json`：
+插件只读取一个 Git 忽略且解除 Git 跟踪的 `config.json`：
 
 ```json
 {
-  "api_key": "[REDACTED_SECRET]",
-  "base_url": "https://www.runninghub.cn"
+  "api_keys": {
+    "international": "YOUR_INTERNATIONAL_API_KEY",
+    "domestic": ""
+  },
+  "trusted_custom_endpoints": {}
 }
 ```
 
-加载优先级：
-
-```text
-RH Config 节点非空输入
-    > config.local.json
-    > 旧版 config.json
-```
-
-旧 `config.json` 仍保留读取能力，仅用于兼容已有安装。
+- 新建 `🌐 RH Config` 的 **Base URL** 原生下拉包括：`international`（国际站，默认）、`domestic`（国内站）、`custom`（自定义）。
+- 自定义模式需要在原有 `base_url` STRING 输入中填写可信 HTTPS Origin，并在本地 `trusted_custom_endpoints` 精确授权该 Origin 及其专属 API Key。导入其他人的工作流不能替你授权。
+- 保留原有 `base_url` STRING、外部连线、`RH_CONFIG` 输出、`is_ai_app` 和 `query_api`。旧 API Prompt 未包含 `site` 时按原 URL 解析；旧图经迁移，冲突时明确阻止。
+- 不同站点的 Key 分开配置，缺少国内站 Key 不会自动使用国际站 Key。日常把节点里的 Key 留空，避免随工作流导出泄露。
+- 新代码不再读取 `config.local.json`；从旧文件转移密钥时使用一次性本地脚本 `scripts/migrate_config_once.py`，不会打印密钥或自动删除源文件。
+- 示例 JSON 已放入本 README，不再维护另一份 config 示例文件。
 
 ### query_api
 

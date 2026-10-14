@@ -85,3 +85,7 @@
 - 不对 8188 主包、共享 Python 依赖或本机密钥做任何修改。
 
 **下一轮开工判断：** 先通过 2A 的 read-only metadata 与凭证安全 Gate，确认国际站 App ID 的真实返回结构，再批准 2B / 2C 的代码修改。此文档是实现方案，非实现/验收结果。
+
+## Preconditions after R0–R4 isolated Config work (2026-10-13)
+
+An unpromoted maintenance worktree is preparing an ignored **single** `config.json` with region-scoped keys and an appended RH Config `site` selector. This does not mean the international AI App metadata read (stage 2A) was verified. Implement the App Inspector only after the security/config worktree is reviewed, the test 8190 plugin code is isolated from 8188, and real metadata shape/authorization is confirmed without a paid task. Never reintroduce a second credential file or put API keys into a GET URL without a separately accepted risk gate.

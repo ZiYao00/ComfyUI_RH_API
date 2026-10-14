@@ -78,7 +78,7 @@ class TaskSubmissionTests(unittest.TestCase):
         task_id = module.RH_Execute()._create_task(
             {
                 "api_key": "key",
-                "base_url": "https://rh.example",
+                "base_url": "https://www.runninghub.ai",
                 "workflow_or_app_id": "workflow-1",
                 "is_ai_app": False,
             },
@@ -129,7 +129,7 @@ class TaskSubmissionTests(unittest.TestCase):
             module.RH_Execute()._create_task(
                 {
                     "api_key": "key",
-                    "base_url": "https://rh.example",
+                    "base_url": "https://www.runninghub.ai",
                     "workflow_or_app_id": "workflow-1",
                     "is_ai_app": False,
                 },
@@ -254,7 +254,7 @@ class TaskSubmissionTests(unittest.TestCase):
             module.RH_Execute()._create_task(
                 {
                     "api_key": "bad",
-                    "base_url": "https://rh.example",
+                    "base_url": "https://www.runninghub.ai",
                     "workflow_or_app_id": "workflow-1",
                     "is_ai_app": False,
                 },

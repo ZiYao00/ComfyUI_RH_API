@@ -422,6 +422,96 @@ restoredExecute.disconnectInput(restoredExecute.inputs.findIndex(item => item.na
 check(restoredExecute.inputs.find(item => item.name === 'workflow_schema')?.link == null &&
     restoredInspect?.outputs?.[0]?.type === 'RH_WORKFLOW_SCHEMA', 'Inspector can disconnect cleanly');
 
+// RH Config keeps the old STRING URL input while adding one native site combo.
+await app.extensionManager.command.execute('Comfy.NewBlankWorkflow');
+app.graph.clear();
+const configNode = create('RH_Config', [50, 80]);
+const configSite = widget(configNode, 'site');
+const configOptions = typeof configSite?.options?.values === 'function'
+    ? configSite.options.values() : configSite?.options?.values;
+check(!!configSite && Array.isArray(configOptions) &&
+    ['international', 'domestic', 'custom'].every(x => configOptions.includes(x)),
+    'Config exposes the three native site choices');
+check(configSite?.value === 'international', 'New Config defaults to the international site');
+check(!!widget(configNode, 'base_url'), 'Legacy base_url STRING remains a widget/input');
+set(configNode, 'site', 'custom');
+set(configNode, 'base_url', 'https://gateway.sample.org');
+const configCopy = structuredClone(app.graph.serialize());
+const configId = configNode.id;
+await app.loadGraphData(configCopy);
+const reloadedConfig = app.graph.getNodeById(configId);
+check(widget(reloadedConfig, 'site')?.value === 'custom' &&
+    widget(reloadedConfig, 'base_url')?.value === 'https://gateway.sample.org',
+    'Custom Config URL and selected site survive a real graph save/load');
+const oldConfigGraph = structuredClone(configCopy);
+const oldConfig = oldConfigGraph.nodes.find(x => String(x.id) === String(configId));
+oldConfig.widgets_values = ['', '2109843724737204225', 'https://www.runninghub.cn', false];
+delete oldConfig.widgets_values_named;
+oldConfig.inputs = (oldConfig.inputs || []).filter(i => !['site', 'query_api'].includes(i.name));
+delete oldConfig.properties.rh_config_site_version;
+await app.loadGraphData(oldConfigGraph);
+const migratedConfig = app.graph.getNodeById(configId);
+check(widget(migratedConfig, 'site')?.value === 'domestic' &&
+    widget(migratedConfig, 'base_url')?.value === 'https://www.runninghub.cn',
+    'Legacy domestic Config graph maps safely to the site selector');
+check(widget(migratedConfig, 'workflow_or_app_id')?.value === '2109843724737204225',
+    'Legacy large App ID stays an exact string after browser migration');
+
+// Real graph round-trip for the externally linked legacy STRING base_url.
+// Existing target slot and link must survive Config's separate migration.
+await app.extensionManager.command.execute('Comfy.NewBlankWorkflow');
+app.graph.clear();
+const linkedConfig = create('RH_Config', [280, 100]);
+const urlSource = create('RH_Test_STRING', [35, 100]);
+const urlInputIndex = linkedConfig.inputs?.findIndex(i => i.name === 'base_url') ?? -1;
+if (urlInputIndex < 0) linkedConfig.addInput('base_url', 'STRING', { widget: { name: 'base_url' } });
+const realBaseUrlSlot = linkedConfig.inputs.findIndex(i => i.name === 'base_url');
+check(!!urlSource.connect(0, linkedConfig, realBaseUrlSlot), 'A STRING source connects to RH Config base_url');
+const linkedGraph = structuredClone(app.graph.serialize());
+const linkedId = linkedConfig.id;
+const linkedOldNode = linkedGraph.nodes.find(node => String(node.id) === String(linkedId));
+linkedOldNode.widgets_values = ['', '2109843724737204225', 'https://www.runninghub.cn', false];
+delete linkedOldNode.widgets_values_named;
+delete linkedOldNode.properties.rh_config_site_version;
+linkedOldNode.inputs = (linkedOldNode.inputs || []).filter(i => !['site', 'query_api'].includes(i.name));
+const oldBaseSlot = linkedOldNode.inputs.findIndex(i => i.name === 'base_url');
+const oldBaseLink = linkedOldNode.inputs[oldBaseSlot]?.link;
+check(oldBaseSlot >= 0 && oldBaseLink != null, 'Legacy fixture serializes its base_url STRING link');
+await app.loadGraphData(linkedGraph);
+const linkedReload = app.graph.getNodeById(linkedId);
+const restoredBaseSlot = linkedReload?.inputs?.findIndex(i => i.name === 'base_url') ?? -1;
+check(restoredBaseSlot === oldBaseSlot && linkedReload.inputs[restoredBaseSlot].link != null,
+    'Legacy RH Config STRING target slot and link survive browser migration');
+check(widget(linkedReload, 'site')?.value === 'custom',
+    'Linked old base_url selects Custom to retain source-controlled URL');
+const linkedSavedGraph = structuredClone(app.graph.serialize());
+await app.loadGraphData(linkedSavedGraph);
+const linkedSavedNode = app.graph.getNodeById(linkedId);
+check(linkedSavedNode?.inputs?.find(i => i.name === 'base_url')?.link != null &&
+    widget(linkedSavedNode, 'site')?.value === 'custom',
+    'Migrated external base_url STRING connection survives a second save/reload');
+
+// Config clipboard / native history must not scramble positional widgets.
+const configBeforePaste = new Set(app.graph._nodes.map(n => String(n.id)));
+app.canvas.copyToClipboard([linkedSavedNode]);
+app.canvas.pasteFromClipboard({ position: [800, 250] });
+const copiedConfig = app.graph._nodes.find(n =>
+    n.type === 'RH_Config' && !configBeforePaste.has(String(n.id)));
+check(!!copiedConfig &&
+    widget(copiedConfig, 'site')?.value === 'custom' &&
+    widget(copiedConfig, 'workflow_or_app_id')?.value === '2109843724737204225',
+    'RH Config native clipboard copy/paste preserves site selection and large App ID');
+if (app.extensionManager?.command?.execute) {
+    await app.extensionManager.command.execute('Comfy.Undo');
+    check(app.graph._nodes.filter(n => n.type === 'RH_Config').length === 1,
+        'RH Config Undo removes clipboard paste without affecting original');
+    await app.extensionManager.command.execute('Comfy.Redo');
+    check(app.graph._nodes.filter(n => n.type === 'RH_Config').length === 2 &&
+        app.graph._nodes.filter(n => n.type === 'RH_Config').every(n =>
+            widget(n, 'site')?.value === 'custom'),
+        'RH Config Redo restores the copied site selection');
+} else failures.push('RH Config requires native Undo/Redo command API');
+
 // Final compact scene contains the four most frequently used node types.
 await app.extensionManager.command.execute('Comfy.NewBlankWorkflow');
 app.graph.clear();

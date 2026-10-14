@@ -12,9 +12,11 @@ import mimetypes
 import os
 import re
 from typing import Iterable, Optional
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 
 import requests
+
+from .rh_security import validate_download_url
 
 
 IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "bmp", "gif", "tif", "tiff"}
@@ -160,6 +162,33 @@ def _filename_for(item: RHOutputItem, output_prefix: str, task_id: Optional[str]
     return f"{prefix}_{task}_{item.index + 1:03d}_{media}{extension}"
 
 
+MAX_DOWNLOAD_BYTES = 8 * 1024 * 1024 * 1024
+
+
+def safe_media_get(url: str, *, session=requests, timeout: int = 120, stream: bool = True):
+    """GET RH-supplied CDN URLs without contacting a local endpoint or auto-redirects.
+
+    Signed URLs may redirect between public CDN origins; validate every hop.
+    Does not send RH API credentials to a media host.
+    """
+    target = validate_download_url(url)
+    for _ in range(4):
+        response = session.get(target, timeout=timeout, stream=stream, allow_redirects=False)
+        status = getattr(response, "status_code", 200)
+        if isinstance(status, int) and 300 <= status < 400:
+            headers = getattr(response, "headers", {})
+            destination = headers.get("Location", "") if headers else ""
+            if hasattr(response, "close"):
+                response.close()
+            if not destination:
+                raise ValueError("RH CDN redirected without a location.")
+            target = validate_download_url(urljoin(target, destination))
+            continue
+        response.raise_for_status()
+        return response
+    raise ValueError("RH CDN redirected too many times.")
+
+
 def download_output_item(
     item: RHOutputItem,
     destination_dir: str,
@@ -169,10 +198,22 @@ def download_output_item(
     timeout: int = 120,
 ) -> RHOutputItem:
     """Stream one RH output to disk using an atomic .part -> final rename."""
-    os.makedirs(destination_dir, exist_ok=True)
-
-    response = session.get(item.url, timeout=timeout, stream=True)
-    response.raise_for_status()
+    response = safe_media_get(item.url, session=session, timeout=timeout, stream=True)
+    try:
+        length = (getattr(response, "headers", {}) or {}).get("Content-Length")
+        if length is not None:
+            try:
+                if int(length) > MAX_DOWNLOAD_BYTES:
+                    raise ValueError("RH media exceeds the local download size limit.")
+            except (TypeError, ValueError) as exc:
+                if isinstance(exc, ValueError) and "exceeds" in str(exc):
+                    raise
+                raise ValueError("RH media returned an invalid Content-Length.") from None
+        os.makedirs(destination_dir, exist_ok=True)
+    except Exception:
+        if hasattr(response, "close"):
+            response.close()
+        raise
 
     content_type = response.headers.get("Content-Type", "") if hasattr(response, "headers") else ""
     if content_type:
@@ -187,9 +228,13 @@ def download_output_item(
     part_path = f"{final_path}.part"
 
     try:
+        downloaded = 0
         with open(part_path, "wb") as handle:
             for chunk in response.iter_content(chunk_size=1024 * 1024):
                 if chunk:
+                    downloaded += len(chunk)
+                    if downloaded > MAX_DOWNLOAD_BYTES:
+                        raise ValueError("RH media exceeds the local download size limit.")
                     handle.write(chunk)
         os.replace(part_path, final_path)
     except Exception:
@@ -199,6 +244,9 @@ def download_output_item(
         except OSError:
             pass
         raise
+    finally:
+        if hasattr(response, "close"):
+            response.close()
 
     item.local_path = final_path
     return item

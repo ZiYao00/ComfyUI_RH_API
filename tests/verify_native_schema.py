@@ -268,6 +268,16 @@ def main():
     print("EXECUTE_NORMALIZED signature:", inspect.signature(native.RH_Params2Native.EXECUTE_NORMALIZED))
     print("DynamicGroup available:", hasattr(io, "DynamicGroup"))
     if args.export:
+        # V1 Config remains active and must be exercised against the same installed frontend.
+        config_cls = importlib.import_module("rh_native_check.nodes.rh_config").RH_Config
+        config_inputs = config_cls.INPUT_TYPES()
+        definitions["RH_Config"] = {
+            "name": "RH_Config", "display_name": "🌐 RH Config",
+            "category": config_cls.CATEGORY, "input": config_inputs,
+            "input_order": {section: list(config_inputs.get(section, {})) for section in ("required", "optional")},
+            "output": ["RH_CONFIG"], "output_name": ["config"],
+            "output_is_list": [False], "output_node": False,
+        }
         # Test-only source/sink definitions are used in an isolated frontend, not registered in the user's server.
         for type_name in ("STRING", "INT", "FLOAT", "BOOLEAN", "IMAGE", "VIDEO", "AUDIO", "RH_PARAMS"):
             name = "RH_Test_" + type_name

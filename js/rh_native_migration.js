@@ -255,6 +255,64 @@ function remapGraphLink(graph, nodeId, linkId, targetSlot) {
     else link.target_slot = targetSlot;
 }
 
+// Config migration is separate from grouped input and Execute migrations.
+// RH_Config stays V1; site is appended at the end, not substituted for base_url.
+export const CONFIG_SITE_VERSION = 1;
+const SITE_VALUES = new Set(["international", "domestic", "custom"]);
+
+export function isLegacyConfig(node) {
+    if (node?.type !== "RH_Config") return false;
+    if (node.properties?.rh_config_site_version === CONFIG_SITE_VERSION) return false;
+    if (SITE_VALUES.has(node.widgets_values_named?.site)) return false;
+    return !SITE_VALUES.has(node.widgets_values?.[5]);
+}
+
+export function migrateConfigNode(node) {
+    if (!isLegacyConfig(node)) return false;
+    const values = node.widgets_values;
+    if (!Array.isArray(values) || values.length < 3 || values.length > 5 ||
+            typeof values[0] !== "string" || typeof values[1] !== "string" ||
+            typeof values[2] !== "string") {
+        throw new Error("RH Config migration stopped: cannot safely decode old widget positions.");
+    }
+    if (values.length > 3 && typeof values[3] !== "boolean") {
+        throw new Error("RH Config migration stopped: AI App switch has an unexpected type.");
+    }
+    if (values.length > 4 && !["legacy", "v2"].includes(values[4])) {
+        throw new Error("RH Config migration stopped: query_api is invalid.");
+    }
+    if ((node.inputs || []).some(input => input.name === "site")) {
+        throw new Error("RH Config migration stopped: site socket already exists but selector data is missing.");
+    }
+    const named = node.widgets_values_named || {};
+    for (const key of ["api_key", "workflow_or_app_id", "base_url"]) {
+        const offset = { api_key: 0, workflow_or_app_id: 1, base_url: 2 }[key];
+        if (Object.prototype.hasOwnProperty.call(named, key) && named[key] !== values[offset]) {
+            throw new Error("RH Config migration stopped: named and positional values conflict.");
+        }
+    }
+    const linkedUrl = (node.inputs || []).some(input => input.name === "base_url" && input.link != null);
+    const raw = values[2].trim().replace(/\/$/, "").toLowerCase();
+    let selection = linkedUrl ? "custom" : (raw === "https://www.runninghub.ai" ?
+        "international" : raw === "" || raw === "https://www.runninghub.cn" ?
+        "domestic" : "custom");
+    if (values.length === 3) values.push(false);
+    if (values.length === 4) values.push("legacy");
+    values.push(selection);
+    node.widgets_values_named = { ...named, site: selection };
+    // Add new optional sockets after existing inputs: existing target slots and
+    // all external STRING connections retain their positions and types.
+    node.inputs ??= [];
+    if (!node.inputs.some(input => input.name === "query_api")) {
+        node.inputs.push({ name: "query_api", localized_name: "query_api", type: "COMBO",
+            shape: 7, widget: { name: "query_api" }, link: null });
+    }
+    node.inputs.push({ name: "site", localized_name: "Base URL", type: "COMBO",
+        shape: 7, widget: { name: "site" }, link: null });
+    node.properties = { ...node.properties, rh_config_site_version: CONFIG_SITE_VERSION };
+    return true;
+}
+
 export function migrateGraph(graphData, createNode) {
     // Work on a copy. Validation failure must not partially rewrite the supplied workflow.
     const staged = structuredClone(graphData);
@@ -262,9 +320,12 @@ export function migrateGraph(graphData, createNode) {
     // ComfyUI 1.53 constructs subgraph definitions before this extension hook.
     // Do not partially migrate an already-instantiated legacy definition.
     for (const subgraph of staged.definitions?.subgraphs || []) {
-        if ((subgraph.nodes || []).some((node) => isLegacyGroup(node) || isLegacyExecute(node) || isLegacyInstance(node))) {
+        if ((subgraph.nodes || []).some((node) => isLegacyGroup(node) || isLegacyExecute(node) || isLegacyInstance(node) || isLegacyConfig(node))) {
             throw new Error("RH migration stopped: this workflow contains a legacy RH node inside a subgraph. Migrate an expanded copy first; the original workflow is unchanged.");
         }
+    }
+    for (const old of staged.nodes || []) {
+        if (migrateConfigNode(old)) migrated++;
     }
     for (const old of staged.nodes || []) {
         if (migrateExecuteNode(old)) migrated++;

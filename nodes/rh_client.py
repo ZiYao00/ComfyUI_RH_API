@@ -14,6 +14,8 @@ from typing import Any, Callable, Optional
 
 import requests
 
+from .rh_security import validate_api_origin
+
 
 class RHTaskSubmissionUncertainError(RuntimeError):
     """The create-task request may have reached RH, so automatic retry is unsafe."""
@@ -33,8 +35,22 @@ class RHClient:
 
     def __init__(self, api_key: str, base_url: str, session=requests):
         self.api_key = api_key
-        self.base_url = (base_url or "https://www.runninghub.cn").rstrip("/")
+        self.base_url = validate_api_origin(base_url)
         self.session = session
+
+    @staticmethod
+    def _check_redirect(response) -> None:
+        status = getattr(response, "status_code", 200)
+        if isinstance(status, int) and 300 <= status < 400:
+            raise RuntimeError("RH API refused a redirect; request was not followed.")
+
+    def _safe_message(self, value) -> str:
+        message = str(value or "")[:512]
+        if self.api_key:
+            message = message.replace(self.api_key, "[REDACTED]")
+        if "://" in message:
+            return "RH remote details withheld for credential safety."
+        return message
 
     def get_workflow_api_json(self, workflow_id: str, timeout: int = 20) -> dict:
         """Read a workflow definition without creating a paid task.
@@ -43,14 +59,7 @@ class RHClient:
         """
         if not str(workflow_id or "").strip():
             raise ValueError("Workflow ID is required for RH schema inspection.")
-        # A schema-inspection call carries the API key. Do not send it to
-        # arbitrary URLs copied from a workflow or configured for a proxy.
-        from urllib.parse import urlsplit
-        parsed_base = urlsplit(self.base_url)
-        if (parsed_base.scheme != "https" or parsed_base.username or parsed_base.password
-                or parsed_base.port is not None or parsed_base.path not in {"", "/"}
-                or parsed_base.hostname not in {"www.runninghub.ai", "www.runninghub.cn"}):
-            raise ValueError("Schema inspection requires the official HTTPS RunningHub API domain.")
+        # Construction validated the exact HTTPS credential destination.
         response = self.session.post(
             f"{self.base_url}/api/openapi/getJsonApiFormat",
             json={"apiKey": self.api_key, "workflowId": str(workflow_id).strip()},
@@ -58,8 +67,7 @@ class RHClient:
             timeout=timeout,
             allow_redirects=False,
         )
-        if getattr(response, "status_code", 200) in {301, 302, 303, 307, 308}:
-            raise RuntimeError("RH schema inspection refused an HTTP redirect.")
+        self._check_redirect(response)
         response.raise_for_status()
         payload = response.json()
         if not isinstance(payload, dict) or payload.get("code") != 0:
@@ -135,14 +143,21 @@ class RHClient:
                 data=json.dumps(payload),
                 headers={"Content-Type": "application/json"},
                 timeout=timeout,
+                allow_redirects=False,
             )
+            self._check_redirect(response)
             response.raise_for_status()
         except self.session.exceptions.RequestException as exc:
             raise RHTaskSubmissionUncertainError(
                 "RunningHub task submission status is uncertain because the HTTP request failed after submission may have started. "
                 "Do not auto-retry. Check the RunningHub task list before retrying manually. "
-                f"Transport error: {exc}"
-            ) from exc
+                f"Transport error type: {type(exc).__name__}"
+            ) from None
+        except RuntimeError:
+            raise RHTaskSubmissionUncertainError(
+                "RunningHub create-task endpoint redirected unexpectedly. "
+                "Do not auto-retry; check the RH task list before manually retrying."
+            ) from None
 
         try:
             result = response.json()
@@ -168,7 +183,7 @@ class RHClient:
                 "The task may already exist; check the RunningHub task list before retrying."
             )
 
-        error_msg = str(result.get("msg", "Unknown error"))
+        error_msg = self._safe_message(result.get("msg", "Unknown error"))
         if "WORKFLOW_NOT_SAVED_OR_NOT_RUNNING" in error_msg:
             raise RuntimeError(
                 f"Workflow error: {error_msg}\n"
@@ -190,13 +205,15 @@ class RHClient:
             f"{self.base_url}/task/openapi/cancel",
             json={"taskId": task_id, "apiKey": self.api_key},
             timeout=timeout,
+            allow_redirects=False,
         )
+        self._check_redirect(response)
         response.raise_for_status()
         result = response.json()
         if result.get("code") == 0:
             return True
         raise RuntimeError(
-            f"RunningHub task cancellation failed: {result.get('msg', 'Unknown error')}"
+            f"RunningHub task cancellation failed: {self._safe_message(result.get('msg', 'Unknown error'))}"
         )
 
     def query_task_legacy(self, task_id: str) -> RHQueryResult:
@@ -204,21 +221,24 @@ class RHClient:
         payload = {"taskId": task_id, "apiKey": self.api_key}
 
         try:
-            response = self.session.post(url, json=payload, timeout=20)
+            response = self.session.post(url, json=payload, timeout=20, allow_redirects=False)
+            self._check_redirect(response)
             response.raise_for_status()
             result = response.json()
         except self.session.exceptions.Timeout as exc:
             return RHQueryResult(
                 status="NETWORK_ERROR",
-                error=f"Request timed out: {exc}",
+                error=f"Request timed out: {self._safe_message(exc)}",
                 api_mode="legacy",
             )
         except self.session.exceptions.RequestException as exc:
             return RHQueryResult(
                 status="NETWORK_ERROR",
-                error=str(exc),
+                error=f"RH request failed ({type(exc).__name__}): {self._safe_message(exc)}",
                 api_mode="legacy",
             )
+        except RuntimeError:
+            return RHQueryResult(status="API_ERROR", error="RH API redirect was refused.", api_mode="legacy")
         except (TypeError, ValueError) as exc:
             return RHQueryResult(
                 status="API_ERROR",
@@ -227,7 +247,7 @@ class RHClient:
             )
 
         code = result.get("code") if isinstance(result, dict) else None
-        msg = str(result.get("msg", "")) if isinstance(result, dict) else ""
+        msg = self._safe_message(result.get("msg", "")) if isinstance(result, dict) else ""
         data = result.get("data") if isinstance(result, dict) else None
 
         if msg == "APIKEY_TASK_IS_QUEUED":
@@ -243,12 +263,12 @@ class RHClient:
         if code != 0:
             error = msg or "RunningHub legacy query failed"
             if isinstance(data, dict) and data:
-                error = f"{error}: {data.get('error', data)}"
+                error = f"{error}: {self._safe_message(data.get('error', ''))}"
             return RHQueryResult(status="ERROR", error=error, raw=result, api_mode="legacy")
 
         return RHQueryResult(
             status="API_ERROR",
-            error=f"Unexpected legacy query response: {result!r}",
+            error="Unexpected legacy query response shape.",
             raw=result,
             api_mode="legacy",
         )
@@ -262,17 +282,20 @@ class RHClient:
         payload = {"taskId": task_id}
 
         try:
-            response = self.session.post(url, json=payload, headers=headers, timeout=20)
+            response = self.session.post(url, json=payload, headers=headers, timeout=20, allow_redirects=False)
+            self._check_redirect(response)
             response.raise_for_status()
             result = response.json()
         except self.session.exceptions.Timeout as exc:
             return RHQueryResult(
                 status="NETWORK_ERROR",
-                error=f"Request timed out: {exc}",
+                error=f"Request timed out: {self._safe_message(exc)}",
                 api_mode="v2",
             )
         except self.session.exceptions.RequestException as exc:
-            return RHQueryResult(status="NETWORK_ERROR", error=str(exc), api_mode="v2")
+            return RHQueryResult(status="NETWORK_ERROR", error=f"RH request failed ({type(exc).__name__}): {self._safe_message(exc)}", api_mode="v2")
+        except RuntimeError:
+            return RHQueryResult(status="API_ERROR", error="RH API redirect was refused.", api_mode="v2")
         except (TypeError, ValueError) as exc:
             return RHQueryResult(
                 status="API_ERROR",
@@ -283,15 +306,15 @@ class RHClient:
         if not isinstance(result, dict):
             return RHQueryResult(
                 status="API_ERROR",
-                error=f"Unexpected V2 query response: {result!r}",
+                error="Unexpected V2 query response shape.",
                 raw=result,
                 api_mode="v2",
             )
 
         status = str(result.get("status", "")).strip().upper()
         outputs = result.get("results") or []
-        error_code = str(result.get("errorCode", "") or "").strip()
-        error_message = str(result.get("errorMessage", "") or "").strip()
+        error_code = self._safe_message(result.get("errorCode", ""))
+        error_message = self._safe_message(result.get("errorMessage", ""))
 
         if status == "SUCCESS":
             if isinstance(outputs, list) and outputs:
@@ -335,14 +358,16 @@ class RHClient:
             data={"apiKey": self.api_key, "fileType": file_type},
             files={"file": (file_name, stream, content_type)},
             timeout=timeout,
+            allow_redirects=False,
         )
+        self._check_redirect(response)
         response.raise_for_status()
         result = response.json()
         if result.get("code") == 0:
             filename = (result.get("data") or {}).get("fileName")
             if filename:
                 return filename
-        raise RuntimeError(f"RunningHub legacy upload failed: {result.get('msg', result)!r}")
+        raise RuntimeError(f"RunningHub legacy upload failed: {self._safe_message(result.get('msg', 'unknown server response'))}")
 
     def upload_file_v2(
         self,
@@ -358,7 +383,9 @@ class RHClient:
             headers={"Authorization": f"Bearer {self.api_key}"},
             files={"file": (file_name, stream, content_type)},
             timeout=timeout,
+            allow_redirects=False,
         )
+        self._check_redirect(response)
         response.raise_for_status()
         result = response.json()
         data = result.get("data") or {}
@@ -367,7 +394,7 @@ class RHClient:
             filename = data.get("fileName") or data.get("filename")
             if filename:
                 return filename
-        raise RuntimeError(f"RunningHub V2 upload failed: {result.get('message', result)!r}")
+        raise RuntimeError(f"RunningHub V2 upload failed: {self._safe_message(result.get('message', 'unknown server response'))}")
 
     @staticmethod
     def _ensure_seekable_stream(file_buffer):

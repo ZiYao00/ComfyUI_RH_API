@@ -12,7 +12,7 @@
 - 在支持的环境中输出 `IMAGE`、`AUDIO`、`VIDEO`、`STRING`、`LATENT`。
 - 下载或转换失败时明确报错，不再用“看似成功”的占位媒体掩盖错误。
 - 默认继续使用 RH Legacy 结果查询，同时提供显式 V2 查询模式用于迁移验证。
-- 优先把本地凭据放在 Git 忽略的 `config.local.json`，避免写入工作流 JSON。
+- 优先把本地凭据放在 Git 忽略的 `config.json`，避免写入工作流 JSON。
 
 长期兼容规则见 [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)。
 
@@ -35,7 +35,7 @@ pip install -r requirements.txt
 ## 快速使用
 
 1. 添加 `RH Config`，填写 RunningHub 工作流/应用 ID。
-2. 建议把节点里的凭据字段留空，通过 `config.local.json` 提供。
+2. 建议把节点里的凭据字段留空，通过 `config.json` 提供。
 3. 添加 `RH Execute` 并连接 `config`。
 4. 如需覆盖云端工作流输入，添加 `RH Param` 或对应上传节点。
 5. Queue Prompt 执行。
@@ -54,24 +54,25 @@ pip install -r requirements.txt
 
 ## 配置
 
-在插件目录创建不会被 Git 跟踪的 `config.local.json`：
+当前正式环境的 `RH Config` V1 节点只读取项目根目录中被 Git 忽略、已解除跟踪的 `config.json`。旧 `config.local.json` 在完成旧版读取等价核验后已退役。
+
+当前过渡期的同一份配置文件可以包含以下字段：
 
 ```json
 {
   "api_key": "[REDACTED_SECRET]",
-  "base_url": "https://www.runninghub.cn"
+  "base_url": "https://www.runninghub.ai",
+  "api_keys": {
+    "international": "[REDACTED_SECRET]",
+    "domestic": ""
+  },
+  "trusted_custom_endpoints": {}
 }
 ```
 
-加载优先级：
+根级的 `api_key` 和 `base_url` 只是供旧版 8188 读取的**临时兼容字段**，不是另一套配置文件。现有旧版的 `base_url` 实际值在迁移时保持原样，后续不要提前更改。
 
-```text
-RH Config 节点非空输入
-    > config.local.json
-    > 旧版 config.json
-```
-
-旧 `config.json` 仍保留读取能力，仅用于兼容已有安装。
+新版国际站／国内站／自定义下拉已在隔离工作树实现，**还没有部署到 8188/8190**。正式环境继续使用原有 STRING `base_url` 输入，按实际站点填写地址；不要把真实 API Key 写入可能分享的工作流。
 
 ### query_api
 

@@ -12,7 +12,7 @@ ComfyUI custom nodes for calling RunningHub workflows and AI apps from a local C
 - Return ComfyUI `IMAGE`, `AUDIO`, `VIDEO`, `STRING`, and `LATENT` outputs where supported.
 - Surface download/conversion failures instead of replacing them with fake successful media.
 - Keep legacy RH result queries as the default while exposing an explicit V2 query mode for validation.
-- Store local credentials in ignored `config.local.json` instead of workflow JSON whenever possible.
+- Store local credentials in ignored `config.json` instead of workflow JSON whenever possible.
 
 See [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) for compatibility and maintenance rules.
 
@@ -35,7 +35,7 @@ The plugin deliberately does not pin or upgrade the Torch/CUDA stack supplied by
 ## Quick start
 
 1. Add `RH Config` and provide a RunningHub workflow/app ID.
-2. Prefer leaving the credential field blank and supplying it through `config.local.json`.
+2. Prefer leaving the credential field blank and supplying it through `config.json`.
 3. Add `RH Execute` and connect the `config` output.
 4. Add `RH Param` and/or upload nodes when remote workflow inputs need to be overridden.
 5. Queue the ComfyUI workflow.
@@ -54,16 +54,21 @@ New video workflows should prefer the `video` output. `video_frames` can require
 
 ## Configuration
 
-Create an ignored `config.local.json` beside the plugin files:
+The current installed RH Config V1 reads one private `config.json` in the plugin root. Git ignores this file and it is no longer tracked. The legacy `config.local.json` was retired after a read-equivalence check. Example layout for this transition:
 
 ```json
 {
   "api_key": "[REDACTED_SECRET]",
-  "base_url": "https://www.runninghub.cn"
+  "base_url": "https://www.runninghub.ai",
+  "api_keys": {
+    "international": "[REDACTED_SECRET]",
+    "domestic": ""
+  },
+  "trusted_custom_endpoints": {}
 }
 ```
 
-`config.local.json` overrides non-empty values from the tracked legacy `config.json`. Values entered directly in `RH Config` have the highest priority.
+The root `api_key` and `base_url` fields are **temporary compatibility aliases for the existing 8188 code**, not separate credential files. Preserve the current value of `base_url` during migration. The new region-aware code and native three-way site selector remain in the **isolated development worktree**; they have not been deployed to 8188 or 8190. Until promotion, set the current node's STRING `base_url` explicitly for the correct RunningHub site. Do not enter a Key directly in a workflow that may be shared or exported.
 
 ### Query API mode
 

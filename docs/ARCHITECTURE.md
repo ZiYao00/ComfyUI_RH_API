@@ -162,7 +162,7 @@ Image/video-frame placeholders may remain only where required by legacy ComfyUI 
 
 ## 9. Secrets
 
-`config.local.json` is the preferred local secret store and is ignored by Git.
+The current live V1 plugin uses one Git-ignored and untracked `config.json` as its private store. Its root `api_key` and `base_url` keys remain temporary compatibility aliases for 8188, while `api_keys.international` and `trusted_custom_endpoints` are reserved for the isolated next version. The old `config.local.json` and tracked `config.json.example` have been retired. The site's native Combo, HTTP hardening and Config migration code are currently in `.ui-test/rh-config-hardening`, not the running 8188/8190 plugin.
 
 Node-entered values override file values for compatibility, but API keys should normally be left blank in workflow nodes so workflow JSON does not contain secrets.
 

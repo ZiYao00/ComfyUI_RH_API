@@ -1,4 +1,6 @@
 # Local secrets. Never commit this file.
+config.json
+config.json.pending
 config.local.json
 
 # Python runtime caches.

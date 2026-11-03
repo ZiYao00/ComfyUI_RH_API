@@ -16,13 +16,14 @@ Required workflow setting:
 
 - `workflow_or_app_id`: RunningHub workflow ID or AI app ID.
 
-Recommended credential setup:
+Recommended credential setup on the currently running 8188 plugin:
 
-1. Copy `config.json.example` to `config.local.json`.
-2. Put the local credential in `config.local.json`.
-3. Leave the credential widget in `RH Config` blank.
+1. Use the **one private, Git-ignored and untracked** `config.json` in the plugin root; never commit it.
+2. Keep the existing root `api_key` and `base_url` compatibility fields until the running plugin has been upgraded. Newer code will use the same file's `api_keys.international` and `api_keys.domestic` keys.
+3. Leave the RH Config credential widget blank and explicitly set the current V1 STRING `base_url` to the correct RunningHub site.
+4. The International / Domestic / Custom dropdown has passed isolated testing but is **not yet installed on 8188 or 8190**; do not expect the live node to show it before a separately validated deployment.
 
-`config.local.json` is ignored by Git.
+The old `config.local.json` and `config.json.example` are retired. The existing 8188 reader was checked to produce identical settings before the old private file was deleted.
 
 The optional `query_api` selector on `RH Config` defaults to `legacy`. Keep that default for normal use. `v2` is available for explicit migration/A-B validation.
 

@@ -1,13 +1,13 @@
 # ComfyUI RH API — 新窗口接手交接（2026-10-13）
 
 > **此文件是接手入口，不代表待办已经实施。**
-> 仓库：`G:\GitHub\ComfyUI_RH_API`；分支 `main`；优先使用本机 CodexPro。
+> 仓库：`[workspace:ws_931fb25acabea3108a05ef45]`；分支 `main`；优先使用本机 CodexPro。
 > 后续开发总方案：`docs/AI_APP_STAGE2_PLAN.md`。
 > 开工前重新核对本机 Git 状态、8190 实际服务与官方 API；不能把本记录的测试结论自动推广到以后版本。
 
 ## 0. 新 Agent 从哪里开始
 
-1. 使用 **ComfyUI Agent Rules**，再通过 CodexPro 打开 `G:\GitHub\ComfyUI_RH_API`，检查未提交改动、最新提交；不要覆盖其他 Agent 的改动。
+1. 使用 **ComfyUI Agent Rules**，再通过 CodexPro 打开 `[workspace:ws_931fb25acabea3108a05ef45]`，检查未提交改动、最新提交；不要覆盖其他 Agent 的改动。
 2. **先阅读**本文件、`docs/AI_APP_STAGE2_PLAN.md`、`docs/ARCHITECTURE.md`、`docs/NATIVE_UI.md`、`docs/QUICKSTART.md`。
 3. 核实 8190 是测试包（Core 0.39.0 / Frontend 1.55.14 的已测组合）、`custom_nodes/ComfyUI_RH_API` 指向本仓库，并确认现有节点真实注册；8188 是日常正式包，不能顺手改动。
 4. **从阶段 2A 开始**：先研究 RH 国际站 AI App 元数据接口、鉴权安全、返回形状，只读测试通过后再编写 2B。不要跳到付费创建 App 任务。
@@ -45,7 +45,7 @@
 
 ### 清理历史
 
-- `G:\GitHub\ComfyUI_RH_API-v3-lab` 旧独立实验仓库：含 6 个未提交文件的完整 69 文件归档已保存到
+- `[workspace]\ComfyUI_RH_API-v3-lab` 旧独立实验仓库：含 6 个未提交文件的完整 69 文件归档已保存到
   `G:\AIGC\ComfyUI_test\_backups\ComfyUI_RH_API-v3-lab_20261013.zip`；
   原目录已移入 Windows 系统回收站。**无需重新恢复旧 Lab 开发**，除非有具体证据需要。
 
@@ -118,7 +118,7 @@
 
 ## 5. 回归与安全操作
 
-在 `G:\GitHub\ComfyUI_RH_API` 根目录执行：
+在 `[workspace:ws_931fb25acabea3108a05ef45]` 根目录执行：
 
 ```bash
 python -B tests/run_tests.py
@@ -145,4 +145,12 @@ git diff --check
 
 ## 7. 下一窗口建议的第一条任务
 
-> 使用 CodexPro 打开 `G:\GitHub\ComfyUI_RH_API`，先读 `docs/HANDOFF_NEXT_STAGES.md` 和 `docs/AI_APP_STAGE2_PLAN.md`，核对 Git 与 8190 测试环境状态。先执行 **阶段 2A：RH 国际站 AI App 的只读元数据接口和凭证风险检查**，给出官方响应结构及安全实现结论，再按 Gate 决定 2B 开发。不要修改 8188、安装共享依赖、重启服务、运行付费 AI App 或 push；除非另行得到授权。
+> 使用 CodexPro 打开 `[workspace:ws_931fb25acabea3108a05ef45]`，先读 `docs/HANDOFF_NEXT_STAGES.md` 和 `docs/AI_APP_STAGE2_PLAN.md`，核对 Git 与 8190 测试环境状态。先执行 **阶段 2A：RH 国际站 AI App 的只读元数据接口和凭证风险检查**，给出官方响应结构及安全实现结论，再按 Gate 决定 2B 开发。不要修改 8188、安装共享依赖、重启服务、运行付费 AI App 或 push；除非另行得到授权。
+
+## Config consolidation and isolated safety hardening — recovery checkpoint (2026-10-14)
+
+- The original 8188 checkout now has one **actual runtime** configuration file, Git-ignored and untracked `config.json`. The exact old `config.local.json` was individually retired only after validating old `RH_Config` gives identical settings when it reads `config.json` alone. The old tracked `config.json.example` was retired as a single file; configuration examples live in README. **Do not overwrite or publish the current private config file.**
+- The original checkout still serves Python/JS matching the old 8188/8190 plugin version; the credential file deliberately retains temporary root `api_key`/`base_url` compatibility aliases within the *same* JSON file. Leave these aliases in place until 8188 can be safely promoted and checked.
+- The new implementation lives in detached worktree `G:\\GitHub\\ComfyUI_RH_API\\.ui-test\\rh-config-hardening` at original base commit `a66c372`. It includes native International/Domestic/Custom selector, Config graph migration preserving URL STRING/link slots, scoped credentials, API redirect protection, CDN URL/download hardening, tests, and docs. The worktree also contains its own ignored private config; never copy that config to the original checkout.
+- Verified isolated tests: **128 Python**, **24 JS migration**, **20 current Core schema**, **136 Frontend 1.55.14 browser assertions**, including Config linked URL round-trips and clipboard Undo/Redo. Live 8190 running the *new* code is still **PENDING**; both servers served shared original JS and must be isolated before promotion. No paid task, 30s H3 performance repeat, Git commit or push was done.
+- Next authorized execution: isolate 8190 plugin code source without touching 8188, then validate the upgraded Config in the real 8190 environment. Only promote reviewed code after that gate; handle API App metadata stage 2A separately. Keep original old workflows and do not silently remap incompatible subgraphs/API prompts.

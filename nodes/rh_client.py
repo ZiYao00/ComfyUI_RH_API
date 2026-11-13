@@ -36,6 +36,15 @@ class RHClient:
         self.base_url = (base_url or "https://www.runninghub.cn").rstrip("/")
         self.session = session
 
+    def _post_no_redirect(self, url: str, **kwargs):
+        """Do not forward RH credentials in POST bodies across HTTP redirects."""
+        kwargs["allow_redirects"] = False
+        response = self.session.post(url, **kwargs)
+        status = getattr(response, "status_code", 200)
+        if isinstance(status, int) and 300 <= status < 400:
+            raise ValueError("RunningHub API redirected a credential-bearing request; check base_url.")
+        return response
+
     def get_workflow_api_json(self, workflow_id: str, timeout: int = 20) -> dict:
         """Read a workflow definition without creating a paid task.
 
@@ -51,7 +60,7 @@ class RHClient:
                 or parsed_base.port is not None or parsed_base.path not in {"", "/"}
                 or parsed_base.hostname not in {"www.runninghub.ai", "www.runninghub.cn"}):
             raise ValueError("Schema inspection requires the official HTTPS RunningHub API domain.")
-        response = self.session.post(
+        response = self._post_no_redirect(
             f"{self.base_url}/api/openapi/getJsonApiFormat",
             json={"apiKey": self.api_key, "workflowId": str(workflow_id).strip()},
             headers={"Content-Type": "application/json"},
@@ -130,18 +139,18 @@ class RHClient:
             payload["instanceType"] = selected_instance
 
         try:
-            response = self.session.post(
+            response = self._post_no_redirect(
                 url,
                 data=json.dumps(payload),
                 headers={"Content-Type": "application/json"},
                 timeout=timeout,
             )
             response.raise_for_status()
-        except self.session.exceptions.RequestException as exc:
+        except (self.session.exceptions.RequestException, ValueError) as exc:
             raise RHTaskSubmissionUncertainError(
-                "RunningHub task submission status is uncertain because the HTTP request failed after submission may have started. "
+                "RunningHub task submission status is uncertain because the request may already have reached the server. "
                 "Do not auto-retry. Check the RunningHub task list before retrying manually. "
-                f"Transport error: {exc}"
+                f"Transport/redirect error: {exc}"
             ) from exc
 
         try:
@@ -186,7 +195,7 @@ class RHClient:
 
     def cancel_task(self, task_id: str, timeout: int = 20) -> bool:
         """Request cancellation of a task through the legacy control endpoint."""
-        response = self.session.post(
+        response = self._post_no_redirect(
             f"{self.base_url}/task/openapi/cancel",
             json={"taskId": task_id, "apiKey": self.api_key},
             timeout=timeout,
@@ -204,7 +213,7 @@ class RHClient:
         payload = {"taskId": task_id, "apiKey": self.api_key}
 
         try:
-            response = self.session.post(url, json=payload, timeout=20)
+            response = self._post_no_redirect(url, json=payload, timeout=20)
             response.raise_for_status()
             result = response.json()
         except self.session.exceptions.Timeout as exc:
@@ -262,7 +271,7 @@ class RHClient:
         payload = {"taskId": task_id}
 
         try:
-            response = self.session.post(url, json=payload, headers=headers, timeout=20)
+            response = self._post_no_redirect(url, json=payload, headers=headers, timeout=20)
             response.raise_for_status()
             result = response.json()
         except self.session.exceptions.Timeout as exc:
@@ -330,7 +339,7 @@ class RHClient:
     ) -> str:
         stream = self._ensure_seekable_stream(file_buffer)
         stream.seek(0)
-        response = self.session.post(
+        response = self._post_no_redirect(
             f"{self.base_url}/task/openapi/upload",
             data={"apiKey": self.api_key, "fileType": file_type},
             files={"file": (file_name, stream, content_type)},
@@ -353,7 +362,7 @@ class RHClient:
     ) -> str:
         stream = self._ensure_seekable_stream(file_buffer)
         stream.seek(0)
-        response = self.session.post(
+        response = self._post_no_redirect(
             f"{self.base_url}/openapi/v2/media/upload/binary",
             headers={"Authorization": f"Bearer {self.api_key}"},
             files={"file": (file_name, stream, content_type)},

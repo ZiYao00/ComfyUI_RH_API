@@ -1,0 +1,31 @@
+name: Tests — GitHub clone distribution
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Python unit, config and distribution regression
+        run: python -B tests/run_tests.py
+      - name: Python syntax
+        run: python -m compileall -q nodes tests
+      - name: Native frontend migration regression
+        run: node --test tests/native_migration.test.mjs

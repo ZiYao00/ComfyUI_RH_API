@@ -132,7 +132,8 @@ class RHUtilsBaselineTests(unittest.TestCase):
         buffer = io.BytesIO(b"abc")
         buffer.seek(3)
 
-        def fake_post(url, data, files, timeout):
+        def fake_post(url, data, files, timeout, allow_redirects):
+            self.assertIs(allow_redirects, False)
             uploaded = files["file"][1]
             self.assertEqual(uploaded.tell(), 0)
             return FakeResponse({"code": 0, "data": {"fileName": "server-name.bin"}})
@@ -149,7 +150,8 @@ class RHUtilsBaselineTests(unittest.TestCase):
         self.assertEqual(result, "server-name.bin")
 
     def test_upload_file_accepts_raw_bytes(self):
-        def fake_post(url, data, files, timeout):
+        def fake_post(url, data, files, timeout, allow_redirects):
+            self.assertIs(allow_redirects, False)
             uploaded = files["file"][1]
             self.assertTrue(hasattr(uploaded, "read"))
             self.assertEqual(uploaded.read(), b"abc")

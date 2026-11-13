@@ -14,20 +14,22 @@ ComfyUI custom nodes for calling RunningHub workflows and AI apps from a local C
 - Keep legacy RH result queries as the default while exposing an explicit V2 query mode for validation.
 - Store local credentials in ignored `config.json` instead of workflow JSON whenever possible.
 
+New users: [GitHub installation and first run](./docs/INSTALL.md). 中文：[安装与首次使用](./docs/INSTALL_CN.md). Maintainers: [release checklist](./docs/RELEASE_CHECKLIST.md).
+
 See [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) for compatibility and maintenance rules.
 
 ## Installation
 
-### ComfyUI Manager
+### ComfyUI Manager (upstream notice)
 
-Search for `ComfyUI_RH_API`, install it, then restart ComfyUI.
+The Manager listing may install the upstream author's plugin, not this fork. Use the Git clone method below to get this fork.
 
-### Manual
+### Git clone (this fork)
 
-Clone the repository into `ComfyUI/custom_nodes/ComfyUI_RH_API`, then install only the connector-owned requirements:
+From `ComfyUI/custom_nodes`, run `git clone https://github.com/ZiYao00/ComfyUI_RH_API.git`. Then install its dependencies using ComfyUI's own Python; see the [full installation guide](./docs/INSTALL.md):
 
 ```bash
-pip install -r requirements.txt
+<ComfyUI Python> -m pip install -r requirements.txt
 ```
 
 The plugin deliberately does not pin or upgrade the Torch/CUDA stack supplied by ComfyUI.
@@ -54,7 +56,7 @@ New video workflows should prefer the `video` output. `video_frames` can require
 
 ## Configuration
 
-The current installed RH Config V1 reads one private `config.json` in the plugin root. Git ignores this file and it is no longer tracked. The legacy `config.local.json` was retired after a read-equivalence check. Example layout for this transition:
+Create private `config.json` by copying the tracked `config.json.example`. Git ignores the private file. For compatibility, a legacy `config.local.json` can still override nonempty matching keys if it exists; new users should not create it. New nodes have a blank `base_url` that uses the private file, while a nonempty URL already saved in a node overrides it. Optional transition-only fields are shown below:
 
 ```json
 {
@@ -68,7 +70,7 @@ The current installed RH Config V1 reads one private `config.json` in the plugin
 }
 ```
 
-The root `api_key` and `base_url` fields are **temporary compatibility aliases for the existing 8188 code**, not separate credential files. Preserve the current value of `base_url` during migration. The new region-aware code and native three-way site selector remain in the **isolated development worktree**; they have not been deployed to 8188 or 8190. Until promotion, set the current node's STRING `base_url` explicitly for the correct RunningHub site. Do not enter a Key directly in a workflow that may be shared or exported.
+This fork's current `RH Config` reads the **top-level** `api_key` and `base_url`; the nested `api_keys` map shown above is reserved for an isolated, not-yet-released region-aware selector and cannot replace the top-level key. New nodes may leave STRING `base_url` blank to use the private config; saved nonempty URLs take precedence. Official HTTPS sites are accepted by default, while custom proxies require an exact `trusted_custom_endpoints` entry in private `config.json`. See the [installation guide](./docs/INSTALL.md). Never put real keys into shareable workflow JSON.
 
 ### Query API mode
 

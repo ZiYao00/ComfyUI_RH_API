@@ -16,3 +16,13 @@ __pycache__/
 
 # Local confirmed task IDs; never publish user task history.
 .rh-task-history/
+
+# Developer-local copies and environments must never enter distribution.
+.codex-backups/
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store

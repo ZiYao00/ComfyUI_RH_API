@@ -116,6 +116,21 @@ class RHClientTests(unittest.TestCase):
         self.assertEqual(failed.status, "ERROR")
         self.assertEqual(failed.error, "E1: bad task")
 
+    def test_redirect_does_not_forward_create_task_credentials(self):
+        class RedirectSession(RecordingSession):
+            def post(self, url, **kwargs):
+                self.calls.append((url, kwargs))
+                response = FakeResponse({})
+                response.status_code = 307
+                return response
+
+        session = RedirectSession({})
+        client = self.module.RHClient("test-key", "https://www.runninghub.ai", session=session)
+        with self.assertRaises(self.module.RHTaskSubmissionUncertainError):
+            client.create_task("workflow-1")
+        self.assertEqual(len(session.calls), 1)
+        self.assertIs(session.calls[0][1]["allow_redirects"], False)
+
     def test_v2_upload_returns_comfy_filename(self):
         session = RecordingSession({
             "code": 0,

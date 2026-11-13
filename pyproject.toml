@@ -1,17 +1,14 @@
 [project]
 name = "ComfyUI_RH_API"
-description = "This plugin makes it easy to call RunningHub cloud workflows and AI apps from ComfyUI with a clean, intuitive interface"
+description = "ComfyUI custom nodes for calling RunningHub cloud workflows and AI apps"
 version = "2.0.0"
 license = {file = "LICENSE"}
 dependencies = ["requests>=2.31.0"]
 
 [project.urls]
-Repository = "https://github.com/xuchenxu168/ComfyUI_RH_API"
-"Bug Tracker" = "https://github.com/xuchenxu168/ComfyUI_RH_API"
-#  Used by Comfy Registry https://registry.comfy.org
+Repository = "https://github.com/ZiYao00/ComfyUI_RH_API"
+"Bug Tracker" = "https://github.com/ZiYao00/ComfyUI_RH_API/issues"
 
-[tool.comfy]
-PublisherId = "xuchenxu168"
-DisplayName = "ComfyUI_RH_API"
-Icon = ""
-includes = []
+# This fork has not been registered as a separate Comfy Registry publisher.
+# Do not reuse the upstream author's [tool.comfy] PublisherId.
+# Set [tool.comfy] only after registering your own publisher; see docs/RELEASE_CHECKLIST.md.

@@ -23,7 +23,7 @@ Recommended credential setup on the currently running 8188 plugin:
 3. Leave the RH Config credential widget blank and explicitly set the current V1 STRING `base_url` to the correct RunningHub site.
 4. The International / Domestic / Custom dropdown has passed isolated testing but is **not yet installed on 8188 or 8190**; do not expect the live node to show it before a separately validated deployment.
 
-The old `config.local.json` and `config.json.example` are retired. The existing 8188 reader was checked to produce identical settings before the old private file was deleted.
+For new installs, copy the public `config.json.example` to private `config.json`. A legacy `config.local.json` may still override nonempty values for compatibility; avoid keeping both files. New RH Config nodes leave `base_url` blank to read the private config, while saved explicit URLs retain precedence. Only official HTTPS sites or explicitly trusted private-config custom endpoints are accepted.
 
 The optional `query_api` selector on `RH Config` defaults to `legacy`. Keep that default for normal use. `v2` is available for explicit migration/A-B validation.
 

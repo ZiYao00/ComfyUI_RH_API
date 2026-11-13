@@ -26,6 +26,8 @@ Verified runtime: ComfyUI 0.39.0 and frontend 1.55.14 for the 2026-10-12 isolate
 
 ## 2. RunningHub API boundary
 
+Before constructing an RH_CONFIG output, `nodes/rh_config.py` checks that `base_url` is an official HTTPS RunningHub origin. A custom HTTPS proxy requires an exact match in `trusted_custom_endpoints` from the private local configuration; a shared workflow cannot silently grant trust. A blank new-node URL uses private `config.json` (fallback: domestic origin), while nonempty saved values remain explicit for backward compatibility. Never log or publish local API keys.
+
 RunningHub HTTP behavior belongs in `nodes/rh_client.py`.
 
 Current policy:

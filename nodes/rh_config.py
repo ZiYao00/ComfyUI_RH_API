@@ -5,28 +5,74 @@ Simplified configuration with clear parameter names
 
 import json
 import os
+from urllib.parse import urlsplit
+
+
+_OFFICIAL_ENDPOINTS = {"www.runninghub.ai", "www.runninghub.cn"}
+
+
+def _validated_endpoint(url, trusted_custom_endpoints=None):
+    """Never send a locally stored API key to an untrusted workflow URL."""
+    raw = str(url or "").strip()
+    try:
+        parsed = urlsplit(raw)
+        valid_https_root = (
+            parsed.scheme == "https"
+            and bool(parsed.hostname)
+            and parsed.username is None
+            and parsed.password is None
+            and parsed.port is None
+            and parsed.path in ("", "/")
+            and not parsed.query
+            and not parsed.fragment
+        )
+    except ValueError:
+        valid_https_root = False
+
+    if not valid_https_root:
+        raise ValueError("RunningHub base_url must be an HTTPS origin without credentials, port, path or query.")
+
+    origin = raw.rstrip("/")
+    if parsed.hostname in _OFFICIAL_ENDPOINTS:
+        return origin
+
+    # An imported workflow cannot add a trusted endpoint; only private config can.
+    custom = trusted_custom_endpoints if isinstance(trusted_custom_endpoints, dict) else {}
+    trusted_origins = {
+        value.strip().rstrip("/")
+        for value in custom.values()
+        if isinstance(value, str)
+    }
+    if origin not in trusted_origins:
+        raise ValueError(
+            "Untrusted RunningHub API base_url. Use www.runninghub.ai or www.runninghub.cn; "
+            "for an intentional custom HTTPS proxy, add its exact origin to "
+            "trusted_custom_endpoints in private config.json."
+        )
+    return origin
+
 
 class RH_Config:
     """
     Configuration node for RunningHub API credentials and settings.
     This node stores your API key and workflow/app ID for use by other nodes.
-    Empty values are loaded from config.local.json first, with config.json kept
-    as a backward-compatible fallback.
+    Blank fields load from private config.json; legacy config.local.json may override
+    nonempty fields when both files exist (backward compatibility).
     """
 
     @staticmethod
     def load_config_file():
         """
-        Load configuration from a local private config first, then fall back to
-        the legacy config.json for backward compatibility.
+        Load config.json first, then apply nonempty values from optional legacy
+        config.local.json for compatibility. New installs use only config.json.
 
         Returns:
             dict: Configuration dictionary or empty dict if no valid file exists
         """
         plugin_root = os.path.dirname(os.path.dirname(__file__))
-        # Load the tracked legacy file first, then let non-empty values from the
-        # ignored local file override it. This keeps older installations working
-        # while making config.local.json the preferred place for secrets.
+        # Load the private config first, then let nonempty values from the
+        # legacy local file override it. This keeps older installations working
+        # without forcing an unsafe migration of existing private settings.
         config_paths = [
             os.path.join(plugin_root, "config.json"),
             os.path.join(plugin_root, "config.local.json"),
@@ -65,7 +111,7 @@ class RH_Config:
                 "api_key": ("STRING", {
                     "default": "",
                     "multiline": False,
-                    "tooltip": "RunningHub API key. Leave empty to use config.local.json. Node input overrides the file value; prefer leaving this blank to avoid saving secrets in workflow JSON."
+                    "tooltip": "RunningHub API key. Leave blank to use private config.json; do not save credentials in shared workflows."
                 }),
                 "workflow_or_app_id": ("STRING", {
                     "default": "",
@@ -73,9 +119,9 @@ class RH_Config:
                     "tooltip": "Workflow ID or AI App ID from RunningHub"
                 }),
                 "base_url": ("STRING", {
-                    "default": "https://www.runninghub.cn",
+                    "default": "",
                     "multiline": False,
-                    "tooltip": "RunningHub API base URL (leave empty to load from the config files)"
+                    "tooltip": "Leave blank to use config.json or the domestic default. Only official HTTPS sites or private-config trusted custom proxies are accepted."
                 }),
             },
             "optional": {
@@ -113,12 +159,13 @@ class RH_Config:
 
         # Node inputs have the highest priority. Use file config as a fallback.
         final_api_key = api_key.strip() if api_key and api_key.strip() else file_config.get("api_key", "")
-        final_base_url = base_url.strip() if base_url and base_url.strip() else file_config.get("base_url", "https://www.runninghub.cn")
+        final_base_url = base_url.strip() if base_url and base_url.strip() else (file_config.get("base_url") or "https://www.runninghub.cn")
+        final_base_url = _validated_endpoint(final_base_url, file_config.get("trusted_custom_endpoints"))
         final_workflow_id = workflow_or_app_id.strip() if workflow_or_app_id and workflow_or_app_id.strip() else file_config.get("workflow_or_app_id", "")
 
         # Validate required fields
         if not final_api_key:
-            raise ValueError("API key is required. Provide it in the node or in config.local.json.")
+            raise ValueError("API key is required. Put it in private config.json or the RH Config node.")
 
         if not final_workflow_id:
             raise ValueError("Workflow ID or AI App ID is required. Provide it in the node or in a config file.")
@@ -137,7 +184,7 @@ class RH_Config:
 
         # Show where values came from
         api_source = "node input" if (api_key and api_key.strip()) else "config file"
-        base_url_source = "node input" if (base_url and base_url.strip()) else "config file"
+        base_url_source = "node input" if (base_url and base_url.strip()) else ("config file" if file_config.get("base_url") else "default")
         workflow_id_source = "node input" if (workflow_or_app_id and workflow_or_app_id.strip()) else "config file"
 
         print(f"✓ RH Config created: {'AI App' if is_ai_app else 'Workflow'} ID={final_workflow_id}")

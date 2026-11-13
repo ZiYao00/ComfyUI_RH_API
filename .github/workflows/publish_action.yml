@@ -1,20 +1,22 @@
-name: Publish to Comfy registry
+name: Publish to Comfy Registry (manual, opt-in)
+
+# GitHub clone distribution does not require Registry publication.
+# Only enable this job after setting your own [tool.comfy] PublisherId,
+# REGISTRY_ACCESS_TOKEN secret, and COMFY_REGISTRY_ENABLED repository variable.
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - "pyproject.toml"
+
+permissions:
+  contents: read
 
 jobs:
   publish-node:
-    name: Publish Custom Node to registry
+    if: ${{ vars.COMFY_REGISTRY_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Check out code
         uses: actions/checkout@v4
       - name: Publish Custom Node
-        uses: Comfy-Org/publish-node-action@main
+        uses: Comfy-Org/publish-node-action@v1
         with:
-          personal_access_token: ${{ secrets.REGISTRY_ACCESS_TOKEN }} ## Add your own personal access token to your Github Repository secrets and reference it here.
+          personal_access_token: ${{ secrets.REGISTRY_ACCESS_TOKEN }}

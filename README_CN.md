@@ -14,20 +14,22 @@
 - 默认继续使用 RH Legacy 结果查询，同时提供显式 V2 查询模式用于迁移验证。
 - 优先把本地凭据放在 Git 忽略的 `config.json`，避免写入工作流 JSON。
 
+新用户优先阅读：[安装与首次使用](./docs/INSTALL_CN.md)；英文：[Installation](./docs/INSTALL.md)。发布维护人员见 [Release Checklist](./docs/RELEASE_CHECKLIST.md)。
+
 长期兼容规则见 [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)。
 
 ## 安装
 
-### ComfyUI Manager
+### ComfyUI Manager（原作者版本提示）
 
-搜索 `ComfyUI_RH_API`，安装后重启 ComfyUI。
+Manager 的同名搜索结果可能属于上游原作者，不保证包含本 Fork 的改动。使用本 Fork 请按下面 Git 地址克隆。
 
-### 手动安装
+### Git Clone 安装本 Fork
 
-把仓库放到 `ComfyUI/custom_nodes/ComfyUI_RH_API`，然后只安装本插件自身声明的依赖：
+在 `ComfyUI/custom_nodes` 运行 `git clone https://github.com/ZiYao00/ComfyUI_RH_API.git`。再用 **ComfyUI 自身的 Python** 安装本插件声明的依赖，完整步骤见 [安装指南](./docs/INSTALL_CN.md)：
 
 ```bash
-pip install -r requirements.txt
+<ComfyUI 的 Python> -m pip install -r requirements.txt
 ```
 
 本插件不会主动固定或升级 ComfyUI 已有的 Torch / CUDA 栈。
@@ -54,7 +56,7 @@ pip install -r requirements.txt
 
 ## 配置
 
-当前正式环境的 `RH Config` V1 节点只读取项目根目录中被 Git 忽略、已解除跟踪的 `config.json`。旧 `config.local.json` 在完成旧版读取等价核验后已退役。
+新安装应复制 `config.json.example` 为私有 `config.json` 并填写自己的 Key。该私有文件已被 Git 忽略。兼容旧版时，若存在 `config.local.json`，其非空同名字段仍会覆盖 `config.json`；新用户无需创建旧文件。新建节点的 `base_url` 默认留空并从私有文件读取，旧工作流中已保存的非空 URL 仍优先。
 
 当前过渡期的同一份配置文件可以包含以下字段：
 
@@ -70,9 +72,9 @@ pip install -r requirements.txt
 }
 ```
 
-根级的 `api_key` 和 `base_url` 只是供旧版 8188 读取的**临时兼容字段**，不是另一套配置文件。现有旧版的 `base_url` 实际值在迁移时保持原样，后续不要提前更改。
+当前本 Fork 的 `RH Config` 实际读取的是**根级** `api_key` 和 `base_url`；上述嵌套 `api_keys` 字段属于尚未发布的多站点下拉方案，不能替代根级 Key。已有工作流若保存了非空 `base_url`，该节点值优先；新节点留空时读取私有配置。
 
-新版国际站／国内站／自定义下拉已在隔离工作树实现，**还没有部署到 8188/8190**。正式环境继续使用原有 STRING `base_url` 输入，按实际站点填写地址；不要把真实 API Key 写入可能分享的工作流。
+国际站／国内站／自定义站点下拉仍在隔离工作树，**没有部署到 8188/8190**。本 Fork 使用 STRING `base_url`，默认仅允许 RH 官方 HTTPS 站点；确需自定义代理时，在私有 `config.json` 中显式配置 `trusted_custom_endpoints`。完整设置见 [安装指南](./docs/INSTALL_CN.md)。不要在可分享的工作流内保存真实 API Key。
 
 ### query_api
 
